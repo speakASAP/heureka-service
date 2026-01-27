@@ -11,7 +11,7 @@ The Heureka Service generates XML feeds in Heureka format for price comparison p
 **Port Range**: 38xx
 
 | Service | Subdomain | Port |
-|---------|-----------|------|
+| ------- | --------- | ---- |
 | heureka-service | heureka.statex.cz | 3800 |
 | api-gateway | heureka.statex.cz | 3801 |
 | gateway-proxy | heureka.statex.cz | 3804 |
