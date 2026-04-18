@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: heureka-service
+  namespace: statex-apps
+  labels:
+    app: heureka-service
+    managed-by: k8s-migration
+spec:
+  type: ClusterIP
+  selector:
+    app: heureka-service
+  ports:
+    - protocol: TCP
+      port: 3000
+      targetPort: 3000
+      name: http
