@@ -7,19 +7,17 @@ RUN npm install --prefer-offline --no-audit || npm ci
 
 COPY . .
 
-# Install root dependencies first (needed for file: symlinks)
+# Install root dependencies
 RUN npm install --prefer-offline --no-audit
 
+# Build shared module first (required dependency)
+RUN cd /app/shared && npm run build
+
 WORKDIR /app/services/aukro-service
-RUN npm run build || (echo "❌ Build failed in aukro-service" >&2; exit 1)
+RUN npm run build
 
-# Verify dist/ was created and copy to /app
-RUN test -f dist/main.js || (echo "❌ dist/main.js not found after build" >&2; exit 1) && \
-    cd /app && \
-    cp -r services/aukro-service/dist ./dist || (echo "❌ Failed to copy dist/ directory" >&2; exit 1) && \
-    test -f /app/dist/main.js || (echo "❌ dist/main.js not found in final location /app/dist/" >&2; exit 1)
-
-WORKDIR /app
+# Copy dist to /app
+RUN cd /app && cp -r services/aukro-service/dist ./dist
 
 EXPOSE 3000
 
