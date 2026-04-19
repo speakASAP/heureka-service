@@ -33,6 +33,12 @@ spec:
                 name: heureka-service-config
             - secretRef:
                 name: heureka-service-secret
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database-credentials
+                  key: DB_PASSWORD
           livenessProbe:
             httpGet:
               path: /health
