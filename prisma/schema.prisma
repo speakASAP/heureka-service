@@ -14,6 +14,63 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Heureka Account - Heureka platform account credentials
+model HeurekaAccount {
+  id        String         @id @default(uuid()) @db.Uuid
+  name      String         @db.VarChar(200)
+  apiKey    String?        @db.Text
+  isActive  Boolean        @default(true)
+  createdAt DateTime       @default(now()) @db.Timestamp(6)
+  updatedAt DateTime       @updatedAt @db.Timestamp(6)
+  offers    HeurekaOffer[]
+  orders    HeurekaOrder[]
+
+  @@index([isActive])
+  @@map("heureka_accounts")
+}
+
+// Heureka Offer - Heureka product listings
+model HeurekaOffer {
+  id            String         @id @default(uuid()) @db.Uuid
+  accountId     String         @db.Uuid
+  productId     String?        @db.Uuid
+  title         String?        @db.VarChar(500)
+  price         Decimal?       @db.Decimal(10, 2)
+  stockQuantity Int            @default(0)
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now()) @db.Timestamp(6)
+  updatedAt     DateTime       @updatedAt @db.Timestamp(6)
+  account       HeurekaAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@index([productId])
+  @@index([isActive])
+  @@map("heureka_offers")
+}
+
+// Heureka Order - Orders received from Heureka
+model HeurekaOrder {
+  id              String         @id @default(uuid()) @db.Uuid
+  accountId       String         @db.Uuid
+  heurekaOrderId  String?        @db.VarChar(100)
+  orderId         String?        @db.Uuid
+  customerEmail   String?        @db.VarChar(200)
+  customerPhone   String?        @db.VarChar(50)
+  total           Decimal        @db.Decimal(10, 2) @default(0)
+  currency        String         @db.VarChar(10) @default("CZK")
+  status          String         @db.VarChar(50) @default("pending")
+  forwarded       Boolean        @default(false)
+  createdAt       DateTime       @default(now()) @db.Timestamp(6)
+  updatedAt       DateTime       @updatedAt @db.Timestamp(6)
+  account         HeurekaAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@index([heurekaOrderId])
+  @@index([status])
+  @@index([forwarded])
+  @@map("heureka_orders")
+}
+
 // Heureka Feed - Feed generation history
 model HeurekaFeed {
   id            String           @id @default(uuid()) @db.Uuid

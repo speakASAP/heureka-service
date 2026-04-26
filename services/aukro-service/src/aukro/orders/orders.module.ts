@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
-import { PrismaModule, ClientsModule } from '@heureka/shared';
+import { PrismaModule, ClientsModule, AuthModule } from '@heureka/shared';
 
 @Module({
-  imports: [PrismaModule, ClientsModule],
+  imports: [PrismaModule, ClientsModule, AuthModule],
   controllers: [OrdersController],
   providers: [OrdersService],
   exports: [OrdersService],

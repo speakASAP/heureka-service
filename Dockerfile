@@ -1,64 +1,55 @@
-# Multi-stage build for API Gateway
 FROM node:24-slim AS builder
 
+RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-# Copy shared package and install dependencies first
-COPY shared/ ./shared/
+# Copy shared module first and build it
+COPY shared ./shared
 WORKDIR /app/shared
-RUN npm ci
-# Copy prisma schema to original location and generate Prisma client
-WORKDIR /app
-COPY prisma ./prisma
-# Ensure output directory exists
-RUN mkdir -p /app/shared/node_modules/.prisma/client
-# Create symlink so Prisma can find @prisma/client in shared/node_modules
-RUN ln -s /app/shared/node_modules ./node_modules
-# Use Prisma from shared/node_modules to avoid auto-install issues
-RUN /app/shared/node_modules/.bin/prisma generate --schema=./prisma/schema.prisma
-# Remove symlink
-RUN rm ./node_modules
-# Fix: Copy index.js to default.js so @prisma/client can find the real client (not the stub)
-RUN cp /app/shared/node_modules/.prisma/client/index.js /app/shared/node_modules/.prisma/client/default.js || true
-WORKDIR /app/shared
-RUN npm run build
+RUN npm ci && npm run build
 
-# Copy service files
+# Copy service files and dependencies
 WORKDIR /app
-COPY services/api-gateway/package*.json ./services/api-gateway/
-COPY services/api-gateway/tsconfig.json ./services/api-gateway/
-COPY services/api-gateway/src ./services/api-gateway/src
+COPY services/aukro-service ./services/aukro-service
 COPY tsconfig.json ./
 COPY package*.json ./
+COPY prisma ./prisma
 
-# Install dependencies and build
-WORKDIR /app/services/api-gateway
-RUN npm install --prefer-offline --legacy-peer-deps
+# Install service dependencies (which reference shared via file://)
+WORKDIR /app/services/aukro-service
+RUN npm install
+
+# Generate Prisma client from shared dir (prisma@5.22.0 matches @prisma/client@5.22.0 in lockfile)
+# Output path in schema is ../shared/node_modules/.prisma/client (relative to /app/prisma/) = /app/shared/node_modules/.prisma/client
+WORKDIR /app/shared
+RUN DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" \
+    ./node_modules/.bin/prisma generate --schema=/app/prisma/schema.prisma
+# Fix: Copy generated client into the service's node_modules/.prisma/client so @prisma/client resolves the real client
+RUN cp -r /app/shared/node_modules/.prisma/client/. /app/services/aukro-service/node_modules/.prisma/client/
+
+# Build service
+WORKDIR /app/services/aukro-service
 RUN npm run build
 
-# Production stage
+# Production stage - copy only what's needed
 FROM node:24-slim
 
 # Install OpenSSL for Prisma query engine
-RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy entire shared package (needed for file: reference to work, includes generated Prisma client)
+# Copy service dist and node_modules
+COPY --from=builder /app/services/aukro-service/dist ./dist
+COPY --from=builder /app/services/aukro-service/node_modules ./node_modules
+
+# Copy entire shared package (source + compiled dist + node_modules for @heureka/shared)
 COPY --from=builder /app/shared ./shared
 
-# Copy service files maintaining directory structure for file: references
-COPY --from=builder /app/services/api-gateway ./services/api-gateway
+# Ensure @heureka/shared is properly resolved in node_modules
+RUN mkdir -p /app/node_modules/@heureka && ln -sf ../../shared /app/node_modules/@heureka/shared
 
-# Copy root package.json for shared dependencies
-COPY --from=builder /app/package*.json ./
-
-WORKDIR /app/services/api-gateway
-
-EXPOSE 3701
-
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3701/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+EXPOSE 3000
 
 CMD ["node", "dist/main.js"]
-
