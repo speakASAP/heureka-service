@@ -4,7 +4,11 @@
   "description": "Heureka feed stack: XML feeds, api-gateway, settings; Aukro API runs from aukro-service repo",
   "private": true,
   "scripts": {
-    "start:dev": "concurrently -n \"API-GW,HEUREKA\" -c \"blue,yellow\" \"cd services/api-gateway && npm run start:dev\" \"cd services/heureka-service && npm run start:dev\""
+    "start:dev": "concurrently -n \"API-GW,HEUREKA\" -c \"blue,yellow\" \"cd services/api-gateway && npm run start:dev\" \"cd services/heureka-service && npm run start:dev\"",
+    "ips:audit": "python3 scripts/strict_doc_audit.py --format markdown --fail-on-issues",
+    "ips:pre-coding": "python3 scripts/pre_coding_gate.py --root .",
+    "ips:deployment-readiness": "python3 scripts/deployment_readiness_gate.py --root .",
+    "ips:check": "npm run ips:audit && npm run ips:pre-coding"
   },
   "dependencies": {
     "@nestjs/axios": "^3.0.1",
@@ -46,4 +50,3 @@
     "typescript": "^5.3.3"
   }
 }
-
