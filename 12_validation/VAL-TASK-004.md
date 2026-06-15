@@ -1,16 +1,16 @@
 # Validation Report: TASK-004 Design Catalog Feed Readiness Action
 
-Validation id: VAL-TASK-004  
-Target: TASK-004  
-Date: 2026-06-13  
-Validator: Agent C  
-Status: contract-ready/runtime-blocked
+Validation id: VAL-TASK-004
+Target: TASK-004
+Date: 2026-06-15
+Validator: Codex worker/integration validator
+Status: passed
 
 ## Summary
 
-TASK-004 now has a draft catalog feed readiness contract with synthetic single-product and bulk readiness shapes, owner-service blocker mapping, remediation hints, and replay/determinism requirements.
+TASK-004 now has a catalog feed readiness contract and a read-only runtime dry-run implementation for single-product and bulk readiness.
 
-No runtime endpoint, schema, controller, or service implementation was added. Runtime work remains blocked until TASK-003 policy vocabulary is stable enough and shared feed runtime file ownership is coordinated with Agents A/B.
+No schema migration, feed publication, catalog mutation, price mutation, media mutation, stock mutation, or external write was added. Runtime work proceeded after TASK-003 policy vocabulary stabilized and this thread owned shared feed controller/service edits.
 
 ## Upstream goal
 
@@ -25,7 +25,8 @@ Task `../11_tasks/TASK-004-design-catalog-feed-readiness-action.md`, feature `..
 | Bulk readiness response shape | Added | Versioned response with summary, per-item blockers, and no mutation flags |
 | Blocker owner mapping | Added | Catalog, catalog-pricing, catalog-media, warehouse, Heureka, and source-owner mappings |
 | Replay/determinism requirements | Added | Snapshot hash, fixed input snapshot, stable ordering, and no AI/random dependency |
-| Runtime implementation | Blocked | TASK-003 vocabulary and shared file ownership not yet stable |
+| Runtime implementation | Added | `../services/heureka-service/src/heureka/feed/feed-readiness.ts`, `../services/heureka-service/src/heureka/feed/feed.service.ts`, `../services/heureka-service/src/heureka/feed/feed.controller.ts` |
+| Runtime self-test | Added | `../services/heureka-service/src/heureka/feed/feed-readiness.self-test.ts` |
 
 ## Blocker mapping coverage
 
@@ -49,12 +50,12 @@ Task `../11_tasks/TASK-004-design-catalog-feed-readiness-action.md`, feature `..
 | Invariants preserved | Pass | Contract maps blockers to INV-001 through INV-005 and does not alter runtime behavior. |
 | Sensitive data excluded | Pass | Examples use synthetic IDs, `example.test` URLs, and no secrets, customers, costs, margins, or supplier-private values. |
 | Contract/replay validation documented | Pass | Contract defines version, snapshot hash, deterministic ordering, and replay constraints. |
-| Runtime endpoint complete | Blocked | Requires stable TASK-003 vocabulary and coordinated ownership of shared controller/service files. |
-| Deployment readiness evaluated | Pass for current documentation state | Gate command passed; no runtime deployment was performed. |
+| Runtime endpoint complete | Pass | Added read-only `GET /feed/readiness/products/:productId` and `POST /feed/readiness/bulk`. |
+| Deployment readiness evaluated | Pass | Gate command passed; no runtime deployment was performed. |
 
 ## Gate evidence
 
-Commands executed remotely from `/home/ssf/Documents/Github/heureka-service` on 2026-06-13:
+Commands executed remotely from `/home/ssf/Documents/Github/heureka-service` on 2026-06-15:
 
 ```bash
 python3 scripts/strict_doc_audit.py --format markdown --fail-on-issues
@@ -74,25 +75,31 @@ python3 scripts/deployment_readiness_gate.py --root . --target TASK-004
 
 Result: PASS. Report written to `reports/validation/ips-deployment-readiness-gate.json`.
 
+```bash
+cd services/heureka-service && npx ts-node src/heureka/feed/feed-readiness.self-test.ts
+```
+
+Result: PASS. Synthetic readiness self-test covered ready, warning, blocked, unknown, bulk summary, no-mutation flags, and deterministic replay hash.
+
+```bash
+cd services/heureka-service && npm run build
+```
+
+Result: PASS. TypeScript build completed for the Heureka service.
+
 ## Runtime boundary evidence
 
-Remote inspection found existing uncommitted changes in shared runtime files:
-
-- `services/heureka-service/src/heureka/feed/feed.controller.ts`
-- `services/heureka-service/src/heureka/feed/feed.service.ts`
-
-Those files were not edited for TASK-004. `prisma/schema.prisma` and `shared/clients/catalog-client.service.ts` were inspected but not edited.
+Remote inspection found existing uncommitted changes in `AGENTS.md`, `CLAUDE.md`, and `scripts/__pycache__/`; those were not edited for TASK-004. Runtime edits were limited to the feed readiness files and the feed service/controller.
 
 ## Issues found
 
-- TASK-003 policy vocabulary is still draft, so TASK-004 blocker codes are explicitly provisional.
-- Runtime endpoint work is blocked until Agents A/B/C coordinate ownership of shared feed controller/service files.
-- Heureka must remain a readiness and feed owner only; product, price, media, category, and stock remediation remain with their owner services.
+- Heureka remains a readiness and feed owner only; product, price, media, category, and stock remediation remain with their owner services.
+- Readiness output is advisory and not persisted. Persisted readiness snapshots remain a future migration-backed enhancement.
 
 ## Recommendation
 
-Treat TASK-004 as contract-ready for Agent B vocabulary alignment and runtime design review. Do not mark TASK-004 implementation complete and do not add endpoints until TASK-003 publishes stable policy vocabulary and the coordinator assigns shared runtime file ownership.
+Accept TASK-004 as implemented for the read-only runtime dry-run slice. Future work can add persisted readiness snapshots or analytics events only with an explicit migration/event contract.
 
 ## Traceability confirmation
 
-TASK-004 preserves the IPS chain: Vision -> Goal Impact -> System -> Feature -> Task -> Execution Plan -> Contract -> Validation. The current deliverable is documentation and validation evidence only; code and endpoint implementation remain gated.
+TASK-004 preserves the IPS chain: Vision -> Goal Impact -> System -> Feature -> Task -> Execution Plan -> Contract -> Code -> Validation.

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Query, Res, HttpStatus } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Res, HttpStatus } from '@nestjs/common';
 import { Response } from 'express';
 import { FeedService } from './feed.service';
 
@@ -53,5 +53,17 @@ export class FeedController {
   async getStatus(@Query('type') type: string = 'heureka_cz') {
     const status = await this.feedService.getFeedStatus(type);
     return { success: true, data: status };
+  }
+
+  @Get('readiness/products/:productId')
+  async getProductReadiness(@Param('productId') productId: string, @Query('feedType') feedType: string = 'heureka_cz') {
+    const readiness = await this.feedService.getProductFeedReadiness(productId, feedType);
+    return { success: true, data: readiness };
+  }
+
+  @Post('readiness/bulk')
+  async getBulkReadiness(@Body() body: { feedType?: string; productIds?: unknown }) {
+    const readiness = await this.feedService.getBulkFeedReadiness(body?.productIds, body?.feedType || "heureka_cz");
+    return { success: true, data: readiness };
   }
 }

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService, LoggerService, CatalogClientService, WarehouseClientService } from '@heureka/shared';
 import { FeedStatusSummary, FeedValidationSnapshot, summarizeFeedStatus, validateHeurekaFeed } from './feed-lifecycle';
+import { buildCatalogFeedReadinessResponse, CatalogFeedReadinessResponse, CatalogFeedReadinessSnapshot } from './feed-readiness';
 
 interface FeedGenerationResult {
   xml: string;
@@ -130,5 +131,77 @@ ${items}
   async getFeedStatus(feedType: string = 'heureka_cz'): Promise<FeedStatusSummary> {
     const latestFeed = await this.prisma.heurekaFeed.findFirst({ where: { feedType }, orderBy: { createdAt: 'desc' } });
     return summarizeFeedStatus(feedType, latestFeed, this.latestValidationByType.get(feedType));
+  }
+
+  async getProductFeedReadiness(productId: string, feedType: string = 'heureka_cz'): Promise<CatalogFeedReadinessResponse> {
+    if (!productId || !productId.trim()) throw new BadRequestException('productId is required');
+    const snapshot = await this.buildReadinessSnapshot(productId.trim(), feedType);
+    return buildCatalogFeedReadinessResponse(feedType, [snapshot]);
+  }
+
+  async getBulkFeedReadiness(productIds: unknown, feedType: string = "heureka_cz"): Promise<CatalogFeedReadinessResponse> {
+    if (!Array.isArray(productIds)) throw new BadRequestException("productIds must be an array");
+    const uniqueProductIds = [...new Set(productIds.map((productId) => String(productId || "").trim()).filter(Boolean))];
+    if (!uniqueProductIds.length) throw new BadRequestException('productIds must include at least one product id');
+    if (uniqueProductIds.length > 100) throw new BadRequestException('Catalog feed readiness supports at most 100 products per request');
+
+    const snapshots = await Promise.all(uniqueProductIds.map((productId) => this.buildReadinessSnapshot(productId, feedType)));
+    return buildCatalogFeedReadinessResponse(feedType, snapshots);
+  }
+
+  private async buildReadinessSnapshot(productId: string, feedType: string): Promise<CatalogFeedReadinessSnapshot> {
+    const settings = await this.prisma.heurekaSettings.findUnique({ where: { feedType } });
+    try {
+      const product = await this.catalogClient.getProductById(productId);
+      const [stock, pricing, media] = await Promise.all([
+        this.warehouseClient.getTotalAvailable(productId),
+        this.catalogClient.getProductPricing(productId),
+        this.catalogClient.getProductMedia(productId),
+      ]);
+      const mediaItems = Array.isArray(media) ? media : [];
+      const primaryImage = mediaItems.find((item: any) => item.isPrimary) || mediaItems[0];
+      const priceVat = pricing?.priceVat ?? pricing?.priceWithVat ?? pricing?.basePrice ?? pricing?.price ?? null;
+      const candidateFeedFields = Array.isArray(product?.candidateFeedFields)
+        ? product.candidateFeedFields
+        : ['ITEM_ID', 'PRODUCTNAME', 'DESCRIPTION', 'URL', 'IMGURL', 'PRICE_VAT', 'DELIVERY_DATE', 'DELIVERY', 'EAN', 'MANUFACTURER', 'CATEGORYTEXT'];
+
+      return {
+        productId,
+        productFound: Boolean(product),
+        productActive: this.isProductActive(product),
+        name: product?.title || product?.name || null,
+        description: product?.description || null,
+        category: product?.categoryText || product?.categoryPath || product?.categoryName || product?.category || null,
+        primaryImageUrl: primaryImage?.url || null,
+        priceVat,
+        availableStock: Number.isFinite(Number(stock)) ? Number(stock) : null,
+        settingsActive: Boolean(settings?.isActive),
+        renderableXml: this.canRenderProductXml(product, primaryImage?.url, priceVat),
+        candidateFeedFields,
+      };
+    } catch (error: any) {
+      this.logger.warn(`Readiness product snapshot unavailable for ${productId}: ${error.message}`);
+      return {
+        productId,
+        productFound: false,
+        settingsActive: Boolean(settings?.isActive),
+      };
+    }
+  }
+
+  private isProductActive(product: any): boolean {
+    if (!product) return false;
+    if (typeof product.isActive === 'boolean') return product.isActive;
+    if (typeof product.status === 'string') return product.status.toLowerCase() !== 'inactive';
+    return true;
+  }
+
+  private canRenderProductXml(product: any, primaryImageUrl: string | undefined, priceVat: unknown): boolean {
+    const fields = [product?.id, product?.title || product?.name, product?.description, primaryImageUrl, priceVat, product?.ean, product?.brand, product?.categoryText || product?.categoryPath || product?.categoryName || product?.category];
+    return fields.every((field) => !this.hasXmlControlCharacters(field));
+  }
+
+  private hasXmlControlCharacters(value: unknown): boolean {
+    return typeof value === 'string' && /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value);
   }
 }

@@ -2,10 +2,10 @@
 
 ```yaml
 id: TASK-004
-status: draft
+status: completed
 owner: Project Owner
 created: 2026-06-13
-last_updated: 2026-06-13
+last_updated: 2026-06-15
 completeness_level: complete
 upstream:
   - ../10_features/FEAT-004-catalog-feed-readiness-action.md
@@ -53,11 +53,11 @@ No direct product editing in catalog, no automatic feed inclusion, no runtime wr
 
 ## Acceptance Criteria
 
-- [ ] Execution plan is reviewed before coding.
-- [ ] Invariant impacts are explicit.
-- [ ] Sensitive-data handling is testable.
-- [ ] Contract and replay risks are documented.
-- [ ] Validation evidence is captured under `12_validation/` or `reports/validation/` before closure.
+- [x] Execution plan is reviewed before coding.
+- [x] Invariant impacts are explicit.
+- [x] Sensitive-data handling is testable.
+- [x] Contract and replay risks are documented.
+- [x] Validation evidence is captured under `12_validation/` or `reports/validation/` before closure.
 
 ## Required Context
 
@@ -74,3 +74,16 @@ Pre-coding gate, strict documentation audit, task-specific contract/replay valid
 ## Execution Plan Requirement
 
 This task must not be converted into a coding prompt until an approved execution plan exists.
+
+## Implementation Evidence
+
+Implemented a read-only catalog feed readiness runtime slice after TASK-003 policy vocabulary stabilized. The service now exposes deterministic single-product and bulk readiness dry-runs without catalog, pricing, media, warehouse, feed publication, or database mutation.
+
+Runtime files changed: `services/heureka-service/src/heureka/feed/feed-readiness.ts`, `services/heureka-service/src/heureka/feed/feed-readiness.self-test.ts`, `services/heureka-service/src/heureka/feed/feed.service.ts`, and `services/heureka-service/src/heureka/feed/feed.controller.ts`.
+
+Runtime endpoints:
+
+- `GET /feed/readiness/products/:productId?feedType=heureka_cz`
+- `POST /feed/readiness/bulk`
+
+Validation evidence is recorded in `../12_validation/VAL-TASK-004.md`.

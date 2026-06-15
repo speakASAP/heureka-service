@@ -2,11 +2,11 @@
 
 ```yaml
 id: EP-TASK-004
-status: draft
+status: validated
 source_task: ../11_tasks/TASK-004-design-catalog-feed-readiness-action.md
 owner: Project Owner
 created: 2026-06-13
-last_updated: 2026-06-13
+last_updated: 2026-06-15
 completeness_level: complete
 vision:
   - ../01_vision/VISION.md
@@ -20,7 +20,7 @@ goal_impact:
 
 ## Metadata
 
-Draft execution plan for `TASK-004`. This plan is not approval to change runtime behavior until reviewed.
+Validated execution plan for `TASK-004`. Runtime work proceeded after TASK-003 published stable policy vocabulary and this thread owned the shared feed controller/service edits.
 
 ## Upstream Traceability
 
@@ -56,7 +56,7 @@ No direct product editing in catalog, no automatic feed inclusion, no runtime wr
 
 ## Parallel Goal Decomposition
 
-This plan can start in parallel as a contract/readiness lane while TASK-002 and TASK-003 stabilize runtime and policy details.
+This plan started as a contract/readiness lane while TASK-002 and TASK-003 stabilized runtime and policy details. The final runtime slice was integrated serially in this thread to avoid shared controller/service conflicts.
 
 - Contract lane: request/response shape for single-product and bulk readiness.
 - Blocker mapping lane: missing field, category, media, price, and stock blockers mapped to owner service and remediation.
@@ -66,15 +66,15 @@ This plan can start in parallel as a contract/readiness lane while TASK-002 and 
 
 | Goal | Can start in parallel | Depends on | Blocks | Primary files | Agent handoff |
 |---|---|---|---|---|---|
-| Readiness contract | Yes | Catalog boundary and invariants | Catalog/client integration | Contract docs/tests | Define synthetic examples and no catalog mutation authority. |
-| Blocker mapping | Yes | TASK-003 vocabulary draft | TASK-007 analytics payloads | Validation examples | Map every blocker to owner service, remediation hint, and public-safe reason. |
-| Runtime endpoint | Conditional | TASK-002/TASK-003 interfaces | Completion | Controller/service files | Add endpoint only after policy vocabulary and file ownership are coordinated. |
+| Readiness contract | Completed | Catalog boundary and invariants | Catalog/client integration | `23_documentation_contracts/CATALOG_FEED_READINESS_CONTRACT.md` | Synthetic examples and no catalog mutation authority are defined. |
+| Blocker mapping | Completed | TASK-003 vocabulary | TASK-007 analytics payloads | `feed-readiness.ts`, validation examples | Every blocker maps to owner service, remediation hint, and public-safe reason. |
+| Runtime endpoint | Completed | TASK-002/TASK-003 interfaces | Completion | `feed.controller.ts`, `feed.service.ts` | Endpoint added after policy vocabulary stabilized and file ownership stayed in this thread. |
 
 ## Blockers And Coordination
 
-- Runtime work is blocked until TASK-003 policy result vocabulary is stable enough for readiness blockers.
-- Heureka must not become catalog owner or perform product edits.
-- Shared controller/service edits must be coordinated with TASK-002 and TASK-003 agents.
+- TASK-003 policy result vocabulary is stable enough for TASK-004 readiness.
+- Heureka remains a readiness/feed owner only and does not perform product edits.
+- Shared controller/service edits were owned by this TASK-004 implementation thread.
 
 ## Files to Inspect
 
@@ -87,11 +87,17 @@ This plan can start in parallel as a contract/readiness lane while TASK-002 and 
 
 ## Files to Create
 
-Task-specific tests, validation reports, and contract artifacts listed by the implementation plan.
+- `../services/heureka-service/src/heureka/feed/feed-readiness.ts`
+- `../services/heureka-service/src/heureka/feed/feed-readiness.self-test.ts`
 
 ## Files to Modify
 
-Only files named by the reviewed implementation plan.
+- `../services/heureka-service/src/heureka/feed/feed.service.ts`
+- `../services/heureka-service/src/heureka/feed/feed.controller.ts`
+- `../11_tasks/TASK-004-design-catalog-feed-readiness-action.md`
+- `../21_execution_plans/EP-TASK-004-design-catalog-feed-readiness-action.md`
+- `../23_documentation_contracts/CATALOG_FEED_READINESS_CONTRACT.md`
+- `../12_validation/VAL-TASK-004.md`
 
 ## Files That Must Not Be Modified
 
@@ -124,7 +130,7 @@ python3 scripts/deployment_readiness_gate.py --root . --target TASK-004
 
 ## Documentation Updates
 
-Update task, execution plan, goal impact, validation report, graph, and task tracker when the implementation proceeds.
+Task, execution plan, readiness contract, and validation report were updated. Goal-impact trace already points to this task and validation report.
 
 ## Rollback Plan
 
@@ -132,12 +138,16 @@ Revert only files changed by the scoped implementation. Preserve unrelated remot
 
 ## Agent Handoff Prompt
 
-Implement `TASK-004` only after reviewing this plan. Preserve Heureka feed invariants, use synthetic evidence, avoid secrets and production raw data, and report validation results.
+`TASK-004` implementation is complete. Preserve Heureka feed invariants, use synthetic evidence, avoid secrets and production raw data, and report validation results.
 
 ## Completion Checklist
 
-- [ ] Implementation complete
-- [ ] Tests complete
-- [ ] Validation evidence collected
-- [ ] Documentation updated
-- [ ] Deviations documented
+- [x] Implementation complete
+- [x] Tests complete
+- [x] Validation evidence collected
+- [x] Documentation updated
+- [x] Deviations documented
+
+## Deviations
+
+The runtime endpoint is read-only and advisory. It does not persist readiness snapshots, publish feeds, include products, or mutate catalog/price/media/stock data. Bulk readiness de-duplicates repeated product ids before upstream calls while preserving deterministic output for the resulting fixed id list.

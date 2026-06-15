@@ -2,10 +2,10 @@
 
 ```yaml
 id: CATALOG-FEED-READINESS-CONTRACT
-status: draft
+status: implemented
 owner: Engineering
 created: 2026-06-13
-last_updated: 2026-06-13
+last_updated: 2026-06-15
 source_task: ../11_tasks/TASK-004-design-catalog-feed-readiness-action.md
 execution_plan: ../21_execution_plans/EP-TASK-004-design-catalog-feed-readiness-action.md
 feature: ../10_features/FEAT-004-catalog-feed-readiness-action.md
@@ -15,7 +15,7 @@ classification: synthetic
 
 ## Purpose
 
-Define the catalog-facing dry-run/readiness contract that explains whether synthetic product snapshots are eligible for a future Heureka feed generation run. This is a planning contract only. Runtime endpoint work remains blocked until TASK-003 publishes a stable policy result vocabulary and shared feed runtime file ownership is coordinated.
+Define the catalog-facing dry-run/readiness contract that explains whether product snapshots are eligible for a future Heureka feed generation run. Runtime endpoint work is implemented as a read-only advisory dry-run after TASK-003 published stable policy vocabulary and shared feed runtime file ownership was coordinated in one thread.
 
 ## Boundary Rules
 
@@ -29,7 +29,7 @@ Define the catalog-facing dry-run/readiness contract that explains whether synth
 
 ## Proposed Runtime Surface
 
-Runtime surface is conditional and must not be implemented from this contract alone.
+Runtime surface is implemented as read-only advisory endpoints.
 
 | Operation | Draft route | Purpose | Mutation allowed |
 |---|---|---|---|
@@ -112,7 +112,7 @@ Rules:
 
 ## Blocker Mapping
 
-This vocabulary is a TASK-004 draft. TASK-003 owns the final policy vocabulary and may rename codes before runtime implementation.
+This vocabulary is the TASK-004 readiness vocabulary. TASK-003 owns feed-level policy vocabulary; TASK-004 maps product-level readiness blockers to owner services and remediation hints.
 
 | Code | Severity | Owner service | Invariant link | Public-safe reason | Remediation hint |
 |---|---|---|---|---|---|
@@ -214,9 +214,20 @@ Expected readiness: `blocked`; blocker `SENSITIVE_FIELD_EXPOSURE`; owner `source
 - Readiness must not depend on live random values, AI output, mutable process globals, or unordered map iteration.
 - Bulk readiness must preserve request order in `items` and may include a separate sorted aggregate only if documented.
 
-## Validation Requirements Before Runtime Work
+## Validation Requirements
 
 - TASK-003 publishes stable policy codes, severities, and remediation message rules.
-- Agents A/B/C coordinate ownership for `services/heureka-service/src/heureka/feed/feed.controller.ts`, `services/heureka-service/src/heureka/feed/feed.service.ts`, and `prisma/schema.prisma`.
+- Shared ownership for `services/heureka-service/src/heureka/feed/feed.controller.ts` and `services/heureka-service/src/heureka/feed/feed.service.ts` is coordinated before runtime edits.
 - Contract tests cover single product, bulk product, zero stock exclusion, missing category/media/price blockers, sensitive-field blocking, and deterministic replay.
 - Validation evidence is captured in `../12_validation/VAL-TASK-004.md` and `../reports/validation/` using synthetic data only.
+
+## Runtime Implementation
+
+Runtime implementation files:
+
+- `../services/heureka-service/src/heureka/feed/feed-readiness.ts`
+- `../services/heureka-service/src/heureka/feed/feed-readiness.self-test.ts`
+- `../services/heureka-service/src/heureka/feed/feed.service.ts`
+- `../services/heureka-service/src/heureka/feed/feed.controller.ts`
+
+The runtime slice fetches product, media, price, stock, and settings evidence, then returns deterministic readiness output. It does not persist readiness snapshots, publish feeds, include products, or mutate upstream services.

@@ -170,6 +170,12 @@ nodes:
 - id: CTX-TASK-003
   type: ContextPackage
   path: 20_context_packages/CTX-TASK-003.md
+- id: PROMPT-TASK-004
+  type: CodingPrompt
+  path: 19_prompts/PROMPT-TASK-004.md
+- id: CTX-TASK-004
+  type: ContextPackage
+  path: 20_context_packages/CTX-TASK-004.md
 edges:
 - from: ROADMAP-HEUREKA-SERVICE
   type: derives_from
@@ -288,6 +294,15 @@ edges:
 - from: EP-TASK-004
   type: constrained_by
   to: ADR-001
+- from: EP-TASK-004
+  type: generates
+  to: PROMPT-TASK-004
+- from: PROMPT-TASK-004
+  type: derives_from
+  to: EP-TASK-004
+- from: PROMPT-TASK-004
+  type: included_in_context
+  to: CTX-TASK-004
 - from: GOAL-IMPACT-TASK-004
   type: derives_from
   to: VISION
