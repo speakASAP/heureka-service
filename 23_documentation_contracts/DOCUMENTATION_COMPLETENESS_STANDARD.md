@@ -158,6 +158,9 @@ A section is not complete if it contains only:
 - Replay/determinism plan
 - Scope
 - Non-goals
+- Parallel goal decomposition
+- Parallel execution matrix
+- Blockers and coordination
 - Files to inspect
 - Files to create
 - Files to modify

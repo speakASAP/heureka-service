@@ -1,5 +1,5 @@
 {
-  "created_at": "2026-06-14T19:58:20Z",
+  "created_at": "2026-06-13T20:41:10Z",
   "gate": "deployment_readiness",
   "next_step": "ready_for_deployment_review",
   "pre_coding_gate": {
@@ -19,7 +19,7 @@
     "score": 100,
     "status": "PASS"
   },
-  "target": "TASK-004",
+  "target": "TASK-002",
   "unresolved_markers": [
     {
       "line": 35,
@@ -140,32 +140,14 @@
       "line": 302,
       "marker": "[MISSING: TASK-007 validation owner not assigned]",
       "path": "23_documentation_contracts/TASK-007_EVENT_TAXONOMY.md"
-    },
-    {
-      "line": 60,
-      "marker": "[MISSING: ...]",
-      "path": "AGENT_OPERATIONS.md"
-    },
-    {
-      "line": 60,
-      "marker": "[UNKNOWN: ...]",
-      "path": "AGENT_OPERATIONS.md"
-    },
-    {
-      "line": 49,
-      "marker": "[MISSING: ...]",
-      "path": "PLAN.md"
-    },
-    {
-      "line": 49,
-      "marker": "[UNKNOWN: ...]",
-      "path": "PLAN.md"
     }
   ],
   "validation_reports": {
     "matching_reports": [
-      "12_validation/VAL-TASK-004.md",
-      "12_validation/VAL-TASK-007.md"
+      "12_validation/VAL-TASK-002.md",
+      "12_validation/VAL-TASK-003.md",
+      "12_validation/VAL-TASK-007.md",
+      "12_validation/VAL-TASK-008.md"
     ],
     "reports": [
       "12_validation/VAL-TASK-001-ips-bootstrap.md",
@@ -178,6 +160,6 @@
       "12_validation/VAL-TASK-008.md"
     ],
     "status": "pass",
-    "target": "TASK-004"
+    "target": "TASK-002"
   }
 }

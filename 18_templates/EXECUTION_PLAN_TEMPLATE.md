@@ -46,6 +46,20 @@ completeness_level: skeletal | partial | complete | validated
 
 [MISSING: define what must not be done]
 
+## Parallel Goal Decomposition
+
+[MISSING: split this plan into independently startable goals or state why this plan must remain single-session]
+
+## Parallel Execution Matrix
+
+| Goal | Can start in parallel | Depends on | Blocks | Primary files | Agent handoff |
+|---|---|---|---|---|---|
+| [MISSING: goal] | [MISSING: yes/no] | [MISSING: dependencies] | [MISSING: downstream blocked work] | [MISSING: files or boundaries] | [MISSING: agent prompt] |
+
+## Blockers And Coordination
+
+[MISSING: list blockers, shared-file conflict risks, external approvals, unavailable contracts, and required sequencing decisions]
+
 ## Files to Inspect
 
 [MISSING: list files the coding agent should read first]
