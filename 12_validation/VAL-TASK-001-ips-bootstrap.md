@@ -17,7 +17,7 @@ Task `../11_tasks/TASK-001-implement-ips-governance-bootstrap.md`, goal impact `
 
 | Criterion | Result | Evidence |
 |---|---|---|
-| Required IPS document groups exist | Pass | `npm run ips:audit` returned `Status: PASS`, score 100/100 |
+| Required IPS document groups exist | Pass | `npm run ips:audit` returned `Status: PASS`, score 100 of 100 |
 | Pre-coding gate evaluates the repo | Pass | `npm run ips:pre-coding` returned `PASS pre_coding_gate` |
 | Runtime code unchanged by scope | Pass | No service source files were modified by this bootstrap |
 | Existing manifest change preserved | Pass | Pre-existing `k8s/deployment.yaml` modification remains untouched |

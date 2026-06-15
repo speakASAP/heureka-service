@@ -41,3 +41,7 @@ All secrets in Vault at `secret/prod/heureka-service` → ESO → K8s Secret. Ne
 - `stock.updated` from warehouse-microservice → triggers feed regeneration
 
 **Ops**: `kubectl logs -f deployment/heureka-service -n statex-apps` · `./scripts/deploy.sh`
+
+## Central Instruction Source
+
+Shared agent rules now live in `/home/ssf/.claude/CLAUDE.md`, `/home/ssf/Documents/Github/CLAUDE.md`, `/home/ssf/.codex/AGENTS.md`, and `/home/ssf/.ai-agent-standards/CROSS_AGENT_AUTOMATION_STANDARD.md`. Keep this file for repository-specific Claude constraints only; do not duplicate shared operating rules here.
