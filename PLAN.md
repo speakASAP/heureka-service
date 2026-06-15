@@ -3,7 +3,7 @@
 
 ## Active plan
 
-Coordinator integration on 2026-06-15 accepted `TASK-004` as a read-only catalog feed readiness runtime slice and recorded `TASK-005`/`TASK-006` review outcomes. The next available work is taxonomy and operations preparation that does not mutate public XML or external systems.
+Coordinator integration on 2026-06-15 accepted `TASK-004` as a read-only catalog feed readiness runtime slice, recorded `TASK-005`/`TASK-006` review outcomes, and reconciled `TASK-007` event taxonomy. Remaining work is owner-gated and must not mutate public XML or external systems without a reviewed implementation prompt.
 
 
 ## Published Runtime Contracts
@@ -26,9 +26,8 @@ Coordinator integration on 2026-06-15 accepted `TASK-004` as a read-only catalog
 
 | Order | Goal | Owner role | Parallel status | Allowed files | Forbidden files | Validation evidence | Handoff notes |
 |---|---|---|---|---|---|---|---|
-| 2 | Review `TASK-005` AI suggestion contract for human-review and storage boundaries. | AI/data-safety reviewer | Ready now and independent of TASK-004 runtime coding | `23_documentation_contracts/AI_FEED_OPTIMIZATION_CONTRACT.md`, `21_execution_plans/EP-TASK-005-define-ai-feed-optimization-contract.md`, `12_validation/VAL-TASK-005.md` | Public XML mutation paths, schemas, runtime services, production prompts | Contract marker checks plus gate rerun for TASK-005 | Keep AI output advisory only unless a later owner-approved prompt names schema and review-state files. |
-| 3 | Resolve `TASK-006` external read-only contract blockers. | External service owners | Ready for review, dependency-gated for implementation | `16_operations/INTEGRATIONS.md`, `21_execution_plans/EP-TASK-006-plan-stock-order-profit-feedback-loop.md`, `12_validation/VAL-TASK-006.md` | Public XML, order/payment/supplier raw data, secrets, runtime code | Owner-approved synthetic examples, replay keys, redaction checks | No runtime implementation until every required source contract is approved or explicitly deferred. |
-| 5 | Convert `TASK-008` operations evidence into an implementation prompt. | Operations/integration owner | Dependency-gated on approved cadence and rollback procedure | `16_operations/OPS-TASK-008-operations-trust-and-scale.md`, `21_execution_plans/EP-TASK-008-plan-operations-trust-and-scale.md`, `12_validation/VAL-TASK-008.md` | Kubernetes, deployment scripts, secrets, runtime probes until prompt approval | Smoke checklist, alert payload fixture scan, scale timing evidence | Exact rollback command, public target URL, cadence, and synthetic dataset sizes are still missing. |
+| 3 | Resolve `TASK-006` external read-only contract blockers. | External service owners | Blocked on owner input | `16_operations/INTEGRATIONS.md`, `21_execution_plans/EP-TASK-006-plan-stock-order-profit-feedback-loop.md`, `12_validation/VAL-TASK-006.md` | Public XML, order/payment/supplier raw data, secrets, runtime code | Owner-approved synthetic examples, replay keys, redaction checks | Warehouse, flipflop, orders, payments, and supplier approvals are required before runtime implementation. |
+| 5 | Convert `TASK-008` operations evidence into an implementation prompt. | Operations/integration owner | Blocked on owner input | `16_operations/OPS-TASK-008-operations-trust-and-scale.md`, `21_execution_plans/EP-TASK-008-plan-operations-trust-and-scale.md`, `12_validation/VAL-TASK-008.md` | Kubernetes, deployment scripts, secrets, runtime probes until prompt approval | Smoke checklist, alert payload fixture scan, scale timing evidence | Exact rollback command, public target URL, cadence, and synthetic dataset sizes are still missing. |
 
 ## Parallel Execution Section
 
