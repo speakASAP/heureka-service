@@ -65,6 +65,10 @@ assertEqual(response.summary.total, 2);
 assertEqual(response.summary.ready, 1);
 assertEqual(response.summary.blocked, 1);
 assertEqual(response.items[0].productId, 'synthetic-product-1');
+const repeated = buildCatalogFeedReadinessResponse('heureka_cz', [readySnapshot, { ...readySnapshot }], generatedAt);
+assertEqual(repeated.items.length, 2);
+assertEqual(repeated.items[0].productId, 'synthetic-product-1');
+assertEqual(repeated.items[1].productId, 'synthetic-product-1');
 const replay = buildCatalogFeedReadinessResponse('heureka_cz', [readySnapshot, { ...readySnapshot, productId: 'synthetic-product-5', availableStock: 0 }], new Date('2026-06-13T21:00:00.000Z'));
 assertEqual(response.snapshotHash, replay.snapshotHash);
 

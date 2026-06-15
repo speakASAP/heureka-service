@@ -150,4 +150,4 @@ Revert only files changed by the scoped implementation. Preserve unrelated remot
 
 ## Deviations
 
-The runtime endpoint is read-only and advisory. It does not persist readiness snapshots, publish feeds, include products, or mutate catalog/price/media/stock data. Bulk readiness de-duplicates repeated product ids before upstream calls while preserving deterministic output for the resulting fixed id list.
+The runtime endpoint is read-only and advisory. It does not persist readiness snapshots, publish feeds, include products, or mutate catalog/price/media/stock data. Bulk readiness preserves the submitted product-id order after trimming empty ids, including repeated ids, so replay output matches the fixed request list.

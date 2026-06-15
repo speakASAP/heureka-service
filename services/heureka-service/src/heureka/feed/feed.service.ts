@@ -139,13 +139,13 @@ ${items}
     return buildCatalogFeedReadinessResponse(feedType, [snapshot]);
   }
 
-  async getBulkFeedReadiness(productIds: unknown, feedType: string = "heureka_cz"): Promise<CatalogFeedReadinessResponse> {
-    if (!Array.isArray(productIds)) throw new BadRequestException("productIds must be an array");
-    const uniqueProductIds = [...new Set(productIds.map((productId) => String(productId || "").trim()).filter(Boolean))];
-    if (!uniqueProductIds.length) throw new BadRequestException('productIds must include at least one product id');
-    if (uniqueProductIds.length > 100) throw new BadRequestException('Catalog feed readiness supports at most 100 products per request');
+  async getBulkFeedReadiness(productIds: unknown, feedType: string = 'heureka_cz'): Promise<CatalogFeedReadinessResponse> {
+    if (!Array.isArray(productIds)) throw new BadRequestException('productIds must be an array');
+    const requestedProductIds = productIds.map((productId) => String(productId || '').trim()).filter(Boolean);
+    if (!requestedProductIds.length) throw new BadRequestException('productIds must include at least one product id');
+    if (requestedProductIds.length > 100) throw new BadRequestException('Catalog feed readiness supports at most 100 products per request');
 
-    const snapshots = await Promise.all(uniqueProductIds.map((productId) => this.buildReadinessSnapshot(productId, feedType)));
+    const snapshots = await Promise.all(requestedProductIds.map((productId) => this.buildReadinessSnapshot(productId, feedType)));
     return buildCatalogFeedReadinessResponse(feedType, snapshots);
   }
 
