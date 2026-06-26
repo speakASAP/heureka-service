@@ -8,7 +8,8 @@
     "ips:audit": "python3 scripts/strict_doc_audit.py --format markdown --fail-on-issues",
     "ips:pre-coding": "python3 scripts/pre_coding_gate.py --root .",
     "ips:deployment-readiness": "python3 scripts/deployment_readiness_gate.py --root .",
-    "ips:check": "npm run ips:audit && npm run ips:pre-coding"
+    "ips:check": "npm run ips:audit && npm run ips:pre-coding",
+    "verify:heureka-order-ingestion": "node scripts/verify_heureka_order_ingestion_contract.js"
   },
   "dependencies": {
     "@nestjs/axios": "^3.0.1",
