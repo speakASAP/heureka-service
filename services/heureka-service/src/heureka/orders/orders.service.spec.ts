@@ -4,6 +4,7 @@ import { HeurekaOrdersService } from './orders.service';
 
 const account = { id: '11111111-1111-4111-8111-111111111111', name: 'heureka-cz', isActive: true, createdAt: new Date() };
 const product = { id: '22222222-2222-4222-8222-222222222222', sku: 'SKU-H', title: 'Catalog product' };
+const warehouseId = '44444444-4444-4444-8444-444444444444';
 
 function makeService(overrides: any = {}) {
   const calls: any[] = [];
@@ -37,8 +38,11 @@ function makeService(overrides: any = {}) {
       return product;
     },
   };
+  const warehouseClient = {
+    getStockByProduct: async () => overrides.stockRows ?? [{ productId: product.id, warehouseId, quantity: 6, reserved: 0, available: 6 }],
+  };
   const logger = { setContext() {}, log() {}, warn() {}, error() {} };
-  return { service: new HeurekaOrdersService(prisma as any, orderClient as any, catalogClient as any, logger as any), calls };
+  return { service: new HeurekaOrdersService(prisma as any, orderClient as any, catalogClient as any, warehouseClient as any, logger as any), calls };
 }
 
 async function run() {
@@ -59,6 +63,7 @@ async function run() {
     assert.equal(calls[0].channelAccountId, account.id);
     assert.equal(calls[0].items[0].productId, product.id);
     assert.equal(calls[0].items[0].quantity, 2);
+    assert.equal(calls[0].items[0].warehouseId, warehouseId);
     assert.equal(calls[0].totals.total, 200);
   }
 
@@ -71,6 +76,45 @@ async function run() {
     assert.equal(calls[0].items[0].productId, product.id);
     assert.equal(calls[0].items[0].title, 'Mapped offer');
     assert.equal(calls[0].items[0].unitPrice, 199);
+    assert.equal(calls[0].items[0].warehouseId, warehouseId);
+  }
+
+  {
+    const explicitWarehouseId = '55555555-5555-4555-8555-555555555555';
+    const { service, calls } = makeService({
+      stockRows: [
+        { productId: product.id, warehouseId, quantity: 6, reserved: 0, available: 6 },
+        { productId: product.id, warehouseId: explicitWarehouseId, quantity: 8, reserved: 1, available: 7 },
+      ],
+    });
+    await service.ingestOrder({
+      externalOrderId: 'H-1002-W',
+      items: [{ catalogProductId: product.id, warehouseId: explicitWarehouseId, quantity: 2, unitPrice: 100 }],
+    });
+    assert.equal(calls[0].items[0].warehouseId, explicitWarehouseId);
+  }
+
+  {
+    const { service, calls } = makeService({ stockRows: [] });
+    await assert.rejects(
+      () => service.ingestOrder({ externalOrderId: 'H-1002-MISSING-WH', items: [{ catalogProductId: product.id, quantity: 1, unitPrice: 10 }] }),
+      /\[MISSING: warehouseId\]/,
+    );
+    assert.equal(calls.length, 0);
+  }
+
+  {
+    const { service, calls } = makeService({
+      stockRows: [
+        { productId: product.id, warehouseId, quantity: 6, reserved: 0, available: 6 },
+        { productId: product.id, warehouseId: '55555555-5555-4555-8555-555555555555', quantity: 8, reserved: 1, available: 7 },
+      ],
+    });
+    await assert.rejects(
+      () => service.ingestOrder({ externalOrderId: 'H-1002-AMBIGUOUS-WH', items: [{ catalogProductId: product.id, quantity: 1, unitPrice: 10 }] }),
+      /multiple Warehouse routes/,
+    );
+    assert.equal(calls.length, 0);
   }
 
   {

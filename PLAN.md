@@ -11,6 +11,7 @@ Coordinator integration on 2026-06-15 accepted `TASK-004` as a read-only catalog
 | Source task | Contract | Published shape | Downstream consumers |
 |---|---|---|---|
 | TASK-002 | Governed feed lifecycle/status | `GET /feed/status?type=heureka_cz` returns `{ success, data }` with `feedType`, `status`, `latestFeedId`, `feedUrl`, `productCount`, `generatedAt`, `feedAgeSeconds`, `reason`, and `latestValidation`. XML feed responses expose `X-Heureka-Feed-Status`, `X-Heureka-Feed-Generation-Ms`, and `X-Heureka-Feed-Snapshot-Hash`. Statuses are `valid`, `invalid`, `stale`, `generating`, `failed`, and `missing`. Policy decisions are `persist_and_expose` and `block_publication`. | TASK-004, TASK-007, TASK-008 |
+| 2026-06-29 channel order reservation gate alignment | Heureka order ingestion | `POST /heureka/orders/ingest` resolves canonical Catalog product IDs and forwards `items[].warehouseId` only when Warehouse route evidence is present; missing, insufficient, or ambiguous route evidence fails closed before Orders. | `orders-microservice` reservation gate, Warehouse availability route evidence |
 
 ## Processed Planning Lanes
 
@@ -50,5 +51,7 @@ Coordinator integration on 2026-06-15 accepted `TASK-004` as a read-only catalog
 The next cycle is review and integration preparation. Runtime changes must wait for approved execution plans, named file ownership, synthetic tests, and validation evidence that preserves TASK-002 lifecycle behavior and TASK-003 policy vocabulary.
 
 ## Last completed
+
+2026-06-29 Heureka order ingestion reservation gate alignment: forwarded Orders items now require Warehouse route evidence and include `warehouseId`; focused spec, contract verifier, diff check, and builds passed.
 
 TASK-007 event taxonomy reconciliation.

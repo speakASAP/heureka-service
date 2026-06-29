@@ -12,9 +12,14 @@ assert.match(controller, /@Post\('ingest'\)/);
 assert.match(controller, /@UseGuards\(HeurekaOrderIngestionGuard\)/);
 assert.match(service, /channel: CHANNEL/);
 assert.match(service, /\[MISSING: catalogProductId\]/);
+assert.match(service, /\[MISSING: warehouseId\]/);
 assert.match(service, /catalogClient\.getProductById/);
 assert.match(service, /heurekaOffer\.findUnique/);
+assert.match(service, /warehouseClient\.getStockByProduct/);
+assert.match(service, /reservableRoutes\.length === 1/);
+assert.match(service, /multiple Warehouse routes/);
 assert.match(client, /contractVersion: CREATE_ORDER_CONTRACT_VERSION/);
+assert.match(client, /warehouseId\?: string/);
 assert.match(client, /x-internal-service-token/);
 assert.match(client, /x-service-name/);
 assert.match(client, /heureka-service/);
@@ -24,10 +29,14 @@ for (const required of [
   'POST /heureka/orders/ingest',
   'channel=heureka',
   'canonical Catalog product UUID',
+  'canonical Warehouse route',
   'stable `externalOrderId`',
   'stable `channelAccountId`',
+  '`items[].warehouseId`',
   '[MISSING: catalogProductId]',
+  '[MISSING: warehouseId]',
   'Heureka does not own order lifecycle',
+  'Warehouse remains the stock and reservation authority',
 ]) {
   assert.ok(contract.includes(required), `Missing contract text: ${required}`);
 }

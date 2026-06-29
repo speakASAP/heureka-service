@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { CatalogClientService, LoggerService, OrderClientService, PrismaService } from '@heureka/shared';
+import { CatalogClientService, LoggerService, OrderClientService, PrismaService, WarehouseClientService } from '@heureka/shared';
 
 const CHANNEL = 'heureka';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -10,6 +10,7 @@ export class HeurekaOrdersService {
     private readonly prisma: PrismaService,
     private readonly orderClient: OrderClientService,
     private readonly catalogClient: CatalogClientService,
+    private readonly warehouseClient: WarehouseClientService,
     private readonly logger: LoggerService,
   ) {
     this.logger.setContext('HeurekaOrdersService');
@@ -153,6 +154,7 @@ export class HeurekaOrdersService {
       const quantity = this.positiveInteger(item.quantity ?? item.count ?? 1, `items[${index}].quantity`);
       const unitPrice = this.nonNegativeMoney(item.unitPrice ?? item.price ?? resolved.unitPrice ?? 0, `items[${index}].unitPrice`);
       const totalPrice = this.nonNegativeMoney(item.totalPrice ?? item.total ?? unitPrice * quantity, `items[${index}].totalPrice`);
+      const warehouseId = await this.resolveWarehouseId(item, index, resolved.productId, quantity);
       items.push({
         productId: resolved.productId,
         sku: this.optionalString(item.sku || catalogProduct?.sku),
@@ -160,10 +162,37 @@ export class HeurekaOrdersService {
         quantity,
         unitPrice,
         totalPrice,
-        warehouseId: this.optionalString(item.warehouseId),
+        warehouseId,
       });
     }
     return items;
+  }
+
+  private async resolveWarehouseId(item: any, index: number, productId: string, quantity: number): Promise<string> {
+    const requestedWarehouseId = this.optionalString(item?.warehouseId);
+    const stockRows = await this.warehouseClient.getStockByProduct(productId);
+    const reservableRoutes = stockRows
+      .map((row: any) => ({
+        warehouseId: this.optionalString(row?.warehouseId || row?.warehouse?.id),
+        available: Number(row?.available),
+      }))
+      .filter((row: { warehouseId?: string; available: number }) => row.warehouseId && Number.isFinite(row.available) && row.available >= quantity);
+
+    if (requestedWarehouseId) {
+      const matchingRoute = reservableRoutes.find((row) => row.warehouseId === requestedWarehouseId);
+      if (matchingRoute) return matchingRoute.warehouseId as string;
+      throw new BadRequestException(`[MISSING: warehouseId] items[${index}] warehouseId does not match a Warehouse route with enough available stock for product ${productId}`);
+    }
+
+    if (reservableRoutes.length === 1) {
+      return reservableRoutes[0].warehouseId as string;
+    }
+
+    if (reservableRoutes.length > 1) {
+      throw new BadRequestException(`[MISSING: warehouseId] items[${index}] has multiple Warehouse routes with available stock for product ${productId}; provide canonical warehouseId`);
+    }
+
+    throw new BadRequestException(`[MISSING: warehouseId] items[${index}] has no Warehouse route with enough available stock for product ${productId}`);
   }
 
   private async resolveCatalogProductId(item: any, index: number): Promise<{ productId: string; title?: string; unitPrice?: number }> {

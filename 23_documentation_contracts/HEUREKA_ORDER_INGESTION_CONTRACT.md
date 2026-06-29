@@ -44,6 +44,7 @@ The endpoint is internal only. Public Heureka XML feed endpoints remain read-onl
   "items": [
     {
       "catalogProductId": "22222222-2222-4222-8222-222222222222",
+      "warehouseId": "44444444-4444-4444-8444-444444444444",
       "sku": "SKU-H",
       "title": "Catalog product",
       "quantity": 2,
@@ -55,7 +56,9 @@ The endpoint is internal only. Public Heureka XML feed endpoints remain read-onl
 }
 ```
 
-Each line must resolve to a canonical Catalog product UUID before forwarding. The endpoint accepts `catalogProductId`/`productId` only when it is a Catalog UUID, or a local Heureka `offerId` that maps to `heureka_offers.productId`. Channel-local row IDs must fail closed with `[MISSING: catalogProductId]`.
+Each line must resolve to a canonical Catalog product UUID and a canonical Warehouse route before forwarding. The endpoint accepts `catalogProductId`/`productId` only when it is a Catalog UUID, or a local Heureka `offerId` that maps to `heureka_offers.productId`. Channel-local row IDs must fail closed with `[MISSING: catalogProductId]`.
+
+For Warehouse route evidence, Heureka calls Warehouse availability for the canonical product and forwards `items[].warehouseId` only when Warehouse reports a route with enough available stock for the requested quantity. If exactly one Warehouse route is reservable, Heureka derives that `warehouseId`. If no route is reservable, a supplied route is not reservable, or more than one route is reservable and the request does not identify the intended route, ingestion fails closed with `[MISSING: warehouseId]` before calling Orders. Warehouse remains the stock and reservation authority; Heureka does not reserve or decrement stock locally.
 
 ## Forwarding
 
@@ -66,12 +69,13 @@ Heureka forwards to Orders using the canonical create-order contract:
 - stable `externalOrderId`
 - stable `channelAccountId`
 - `items[].productId` as canonical Catalog product ID
+- `items[].warehouseId` as Warehouse-owned reservation route evidence
 - positive `quantity`
 - `totals.currency` and gross item totals
 
 ## Boundaries
 
-- Heureka does not own order lifecycle, payment state, warehouse stock truth, or Catalog product truth.
+- Heureka does not own order lifecycle, payment state, warehouse stock truth, reservation truth, or Catalog product truth.
 - No public XML feed includes raw orders, customer identifiers, payment details, secrets, or internal supplier/commercial values.
 - Runtime smoke must use synthetic/replay-safe input only; production order creation is a mutation and needs explicit smoke scope.
 
@@ -81,3 +85,7 @@ Heureka forwards to Orders using the canonical create-order contract:
 - `npm --prefix shared run build`
 - `npm --prefix services/heureka-service run build`
 - `node scripts/verify_heureka_order_ingestion_contract.js`
+
+## 2026-06-29 Reservation Gate Alignment
+
+Orders now rejects sellable-channel creates unless Warehouse reservation handoff returns `reserved`. Heureka order ingestion therefore forwards Orders-ready route evidence instead of optional local hints: every forwarded item includes `warehouseId` derived from Warehouse stock rows or validated against them. Missing, insufficient, or ambiguous Warehouse route evidence fails closed before `orderClient.createOrder`, preserving Warehouse as stock and reservation authority.
