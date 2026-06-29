@@ -54,6 +54,8 @@ export interface CatalogFeedReadinessSnapshot {
 export interface CatalogFeedReadinessItem {
   productId: string;
   readiness: CatalogFeedReadinessState;
+  availableStock?: number | null;
+  settingsActive?: boolean;
   blockers: CatalogFeedReadinessBlocker[];
   feedEligibility: {
     includedInDryRun: boolean;
@@ -194,7 +196,7 @@ export function evaluateCatalogFeedReadiness(snapshot: CatalogFeedReadinessSnaps
 
   if (!snapshot.productFound) {
     blockers.push(BLOCKERS.PRODUCT_NOT_FOUND);
-    return buildItem(snapshot.productId, blockers, 'unknown');
+    return buildItem(snapshot, blockers, 'unknown');
   }
 
   if (snapshot.productActive === false) blockers.push(BLOCKERS.PRODUCT_INACTIVE);
@@ -212,7 +214,7 @@ export function evaluateCatalogFeedReadiness(snapshot: CatalogFeedReadinessSnaps
   if ((snapshot.candidateFeedFields || []).some((field) => SENSITIVE_FIELD_PATTERN.test(field))) blockers.push(BLOCKERS.SENSITIVE_FIELD_EXPOSURE);
   if (Number(snapshot.generationEstimateMs || 0) > GENERATION_SLA_WARNING_MS) blockers.push(BLOCKERS.GENERATION_SLA_RISK);
 
-  return buildItem(snapshot.productId, blockers);
+  return buildItem(snapshot, blockers);
 }
 
 export function buildCatalogFeedReadinessResponse(feedType: string, snapshots: CatalogFeedReadinessSnapshot[], generatedAt: Date = new Date()): CatalogFeedReadinessResponse {
@@ -237,13 +239,15 @@ export function buildCatalogFeedReadinessResponse(feedType: string, snapshots: C
   };
 }
 
-function buildItem(productId: string, blockers: CatalogFeedReadinessBlocker[], forcedState?: CatalogFeedReadinessState): CatalogFeedReadinessItem {
+function buildItem(snapshot: CatalogFeedReadinessSnapshot, blockers: CatalogFeedReadinessBlocker[], forcedState?: CatalogFeedReadinessState): CatalogFeedReadinessItem {
   const hasBlockingIssue = blockers.some((blocker) => blocker.severity === 'blocker');
   const hasWarning = blockers.some((blocker) => blocker.severity === 'warning');
   const readiness = forcedState || (hasBlockingIssue ? 'blocked' : hasWarning ? 'warning' : 'ready');
   return {
-    productId,
+    productId: snapshot.productId,
     readiness,
+    availableStock: snapshot.availableStock === undefined ? null : snapshot.availableStock,
+    settingsActive: snapshot.settingsActive,
     blockers,
     feedEligibility: {
       includedInDryRun: readiness === 'ready' || readiness === 'warning',

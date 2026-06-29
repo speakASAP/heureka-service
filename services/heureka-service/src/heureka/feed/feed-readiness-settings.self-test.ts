@@ -59,6 +59,8 @@ async function main(): Promise<void> {
   const response = await service.getProductFeedReadiness("synthetic-product-1", "heureka_cz");
   assertEqual(response.summary.total, 1);
   assertEqual(response.summary.blocked, 1);
+  assertEqual(response.items[0].availableStock, 60);
+  assertEqual(response.items[0].settingsActive, false);
   const blockerCodes = response.items[0].blockers.map((blocker) => blocker.code);
   assertIncludes(blockerCodes, "SETTINGS_INACTIVE");
   if (blockerCodes.includes("STOCK_UNKNOWN") || blockerCodes.includes("ZERO_STOCK")) {
