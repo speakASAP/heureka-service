@@ -5,7 +5,7 @@
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { AuthModule } from '@heureka/shared';
+import { AuthModule, HealthModule } from '@heureka/shared';
 import { GatewayController } from './gateway.controller';
 import { GatewayService } from './gateway.service';
 import * as http from 'http';
@@ -57,9 +57,9 @@ import * as https from 'https';
     }),
     ConfigModule,
     AuthModule,
+    HealthModule,
   ],
   controllers: [GatewayController],
   providers: [GatewayService],
 })
 export class GatewayModule {}
-
