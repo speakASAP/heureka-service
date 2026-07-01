@@ -1,7 +1,7 @@
 # TASK-ORDERS-007 - Heureka Orders Smoke Production Readiness
 
 Date: 2026-07-01
-Status: Heureka runtime prerequisites unblocked; blocked downstream on Orders-to-Warehouse reservation handoff
+Status: Complete for sanitized create, idempotency replay, Warehouse reservation readback, and synthetic cleanup; external Heureka registration details remain [UNKNOWN]
 Owner: Heureka Orders smoke / production readiness lane
 
 ## Intent Preservation Chain
@@ -233,3 +233,60 @@ Orders/Warehouse runtime evidence, presence only:
 ## Deployment
 
 No deployment was run. The smoke runner was copied into the running pod as a temporary verifier after source validation. Runtime DB schema initialization was applied directly to the configured Heureka database after owner approval and create-only SQL validation.
+
+## 2026-07-01 Final Orders/Warehouse Smoke Verification
+
+Role: channel integration owner.
+
+Intent Preservation Chain:
+
+- Vision: Alfares marketplace channels create canonical Orders while preserving Catalog product truth and Warehouse stock authority.
+- Goal Impact: Goal 7.2 verifies Heureka can create a sanitized synthetic order, replay the idempotency key, observe Warehouse reservation handoff, and clean up the synthetic order.
+- System: Heureka owns channel ingestion only; Orders owns lifecycle and idempotency; Warehouse owns reservation state; Auth owns the short-lived admin identity used only for smoke cleanup.
+- Feature: `POST /heureka/orders/ingest` production smoke for create, replay, Orders readback, Warehouse reservation, and lifecycle cleanup.
+- Task: Re-run the smoke after Orders/Warehouse reservation readiness and record sanitized evidence without token values, order IDs, customer payloads, database rows, or payment data.
+- Execution Plan: Run pod-local preflight, run live create/replay, use an explicit short-lived Orders admin token for readback and approved synthetic cleanup, and verify no `[MISSING: ...]` markers remain.
+- Coding Prompt: Keep channel create auth unchanged; add only smoke-runner support for explicit Orders admin readback/cleanup and a required cancellation approval body.
+- Code: `scripts/smoke_heureka_order_ingestion_live.js` now supports `HEUREKA_ORDER_SMOKE_ORDERS_ADMIN_TOKEN` / `ORDERS_ADMIN_TOKEN` for Orders readback and approved synthetic cleanup. Normal create/replay still uses Heureka internal service headers.
+- Validation: See sanitized command evidence below.
+
+### Current Runtime Evidence
+
+- Heureka deployment image: `localhost:5000/heureka-service:92c0bb0`, ready `1/1`.
+- Env-name presence only: `JWT_TOKEN` present, `HEUREKA_INTERNAL_SERVICE_TOKEN` missing, `WAREHOUSE_SERVICE_TOKEN` present, `ORDER_SERVICE_URL` present, `WAREHOUSE_SERVICE_URL` present, `AUTH_SERVICE_URL` present.
+- Orders readback with the Heureka channel token remains forbidden by design; Orders readback and cleanup require an authorized Orders admin/global-superadmin Auth identity.
+- A short-lived Auth-validated token was generated inside the Auth pod for an existing authorized identity and was not printed or persisted.
+
+### Smoke Results
+
+Command shape:
+
+```bash
+kubectl -n statex-apps exec -i deployment/heureka-service -- env HEUREKA_ORDER_SMOKE_ORDERS_ADMIN_TOKEN="$AUTH_TOKEN" node - --execute < scripts/smoke_heureka_order_ingestion_live.js
+```
+
+Sanitized result:
+
+- preflight missing markers: none
+- Catalog product status: `200`
+- Warehouse stock status: `200`
+- reservable Warehouse route count: `1`
+- selected Warehouse route: `c0de0000-0000-4000-8000-000000000013`
+- Heureka required tables present: `heureka_accounts`, `heureka_offers`, `heureka_orders`
+- first POST status: `201`
+- replay POST status: `201`
+- order id presence: `true`
+- replay flag: `true`
+- stable idempotent order id: `true`
+- Orders readback status: `200`
+- reservation status presence: `true`
+- reservation statuses: `reserved`
+- cleanup status: `200`
+- cleanup cancelled: `true`
+- missing markers: none
+
+### Superseded Blockers
+
+The earlier blockers `[MISSING: successful Orders Warehouse reservation handoff for Heureka]`, `[MISSING: successful first order ingest]`, `[MISSING: successful idempotent replay]`, `[MISSING: orderId]`, and `[MISSING: reservationStatus]` are superseded by the final smoke pass above.
+
+Remaining non-Orders item: `[UNKNOWN: external Heureka e-shop registration details]` for the owner-operated `sluzby.heureka.cz/shop-registration/company` flow.

@@ -77,6 +77,12 @@ function internalHeaders() {
 
 function ordersHeaders() {
   const headers = {};
+  const adminToken = firstPresent(['HEUREKA_ORDER_SMOKE_ORDERS_ADMIN_TOKEN', 'ORDERS_ADMIN_TOKEN']);
+  if (adminToken) {
+    headers.Authorization = bearer(adminToken.value);
+    return headers;
+  }
+
   const ordersToken = firstPresent(['ORDERS_SERVICE_TOKEN']);
   if (ordersToken) headers.Authorization = bearer(ordersToken.value);
 
@@ -86,6 +92,50 @@ function ordersHeaders() {
     headers['x-service-name'] = 'heureka-service';
   }
   return headers;
+}
+
+async function cancelSyntheticOrder(orderServiceUrl, orderId) {
+  if (!orderId) {
+    return {
+      status: 0,
+      ok: false,
+      missing: ['[MISSING: orderId for synthetic cleanup]'],
+    };
+  }
+
+  const response = await fetchJson(`${orderServiceUrl}/api/orders/${orderId}/status`, {
+    method: 'PUT',
+    headers: {
+      ...ordersHeaders(),
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      status: 'cancelled',
+      approval: {
+        approved: true,
+        approvalType: 'human',
+        reasonCode: 'SYNTHETIC_SMOKE_CLEANUP',
+        sideEffectsHandled: {
+          payment: true,
+          warehouse: true,
+          notification: true,
+          crm: true,
+          channel: true,
+        },
+      },
+    }),
+  }).catch((error) => ({
+    status: 0,
+    ok: false,
+    errorSummary: redact(error.message),
+  }));
+
+  return {
+    status: response.status,
+    ok: response.ok,
+    missing: response.ok ? [] : ['[MISSING: synthetic order cleanup cancelled status]'],
+    errorSummary: response.errorSummary,
+  };
 }
 
 function routeSummaries(rows, quantity) {
@@ -363,7 +413,8 @@ async function run() {
       }))
     : { status: 0, ok: false, data: null };
   const reservationStatuses = unique(findReservationStatuses([first.data, second.data, orderReadback.data]));
-  const missing = [];
+  const cleanup = await cancelSyntheticOrder(preflight._runtime.orderServiceUrl, orderId);
+  const missing = [...cleanup.missing];
 
   if (!first.ok) missing.push('[MISSING: successful first order ingest]');
   if (!second.ok) missing.push('[MISSING: successful idempotent replay]');
@@ -391,6 +442,9 @@ async function run() {
     firstErrorSummary: first.errorSummary,
     secondErrorSummary: second.errorSummary,
     readbackErrorSummary: orderReadback.errorSummary,
+    cleanupStatus: cleanup.status,
+    cleanupCancelled: cleanup.ok,
+    cleanupErrorSummary: cleanup.errorSummary,
     missing,
   });
 
