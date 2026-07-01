@@ -309,91 +309,99 @@ export class PublicController {
   }
 
   private dashboardBody() {
-    return `<header class="site-header compact-header">
-  <div class="header-inner">
-    <a class="brand" href="/" aria-label="Alfares Heureka">
-      <span class="brand-text">Alfares <strong>Heureka</strong></span>
-    </a>
-    <button class="secondary-button light button-reset" type="button" id="logout-button">Odhlásit se</button>
-  </div>
-</header>
-<main class="dashboard-app" id="heureka-dashboard">
+    return `<main class="dashboard-app" id="heureka-dashboard">
   <aside class="dashboard-sidebar">
-    <div>
-      <div class="dashboard-title">Heureka Dashboard</div>
-      <p class="dashboard-muted" id="dashboard-user">Loading session</p>
-    </div>
+    <a class="dashboard-logo" href="/" aria-label="Alfares Heureka"><span>heureka</span><strong>!</strong></a>
     <nav class="dashboard-nav" aria-label="Dashboard navigation">
-      <a href="/dashboard/products" data-dashboard-link="products">Products</a>
-      <a href="/dashboard" data-dashboard-link="feed">Feed</a>
-      <a href="/dashboard/admin/users" id="admin-link" data-dashboard-link="admin" hidden>Admin</a>
+      <a href="/dashboard" data-dashboard-link="feed"><span class="nav-icon">${this.icon('home')}</span>Overview</a>
+      <a href="/dashboard/products" data-dashboard-link="products"><span class="nav-icon">${this.icon('database')}</span>Products</a>
+      <a href="/dashboard/products" data-dashboard-link="products" class="nav-child">Catalog products</a>
+      <a href="/dashboard" data-dashboard-link="feed" class="nav-child">Feed</a>
+      <a href="/dashboard/products" data-dashboard-link="products" class="nav-child">Edit queue</a>
+      <a href="/dashboard/admin/users" id="admin-link" data-dashboard-link="admin" hidden><span class="nav-icon">${this.icon('shield')}</span>Admin</a>
+      <a href="/dashboard/admin/users" id="admin-users-link" data-dashboard-link="admin" class="nav-child" hidden>Users</a>
     </nav>
     <div class="dashboard-sidebar-foot">
-      <span class="status ok"></span>
-      <span>Production</span>
+      <span>Shop ID: 12345</span>
+      <span><i class="status ok"></i>Production</span>
+      <button class="sidebar-collapse button-reset" type="button">‹ Collapse</button>
     </div>
   </aside>
-  <section class="dashboard-workspace">
-    <div class="dashboard-topline">
-      <div>
-        <h1>Heureka Dashboard</h1>
-        <p>Catalog products, feed readiness, listing edits, and admin statistics.</p>
+  <section class="dashboard-shell">
+    <header class="dashboard-topbar">
+      <h1>Heureka Dashboard</h1>
+      <div class="topbar-status">
+        <span><i class="status ok"></i><span id="feed-pill">Heureka feed: loading</span></span>
+        <span>Last sync: just now</span>
+        <button class="icon-button button-reset" id="dashboard-refresh" type="button" title="Refresh">${this.icon('refresh')}</button>
+        <button class="icon-button button-reset" type="button" title="Help">${this.icon('help')}</button>
+        <button class="icon-button button-reset" type="button" title="Notifications">${this.icon('bell')}</button>
+        <span class="user-avatar">TA</span>
+        <span class="dashboard-user-name" id="dashboard-user">Loading session</span>
+        <button class="icon-button button-reset" type="button" id="logout-button" title="Log out">${this.icon('external')}</button>
       </div>
-      <div class="dashboard-actions">
-        <span class="feed-pill" id="feed-pill">Feed: loading</span>
-        <button class="secondary-button light button-reset" id="dashboard-refresh" type="button">Refresh</button>
-        <button class="primary-button button-reset" id="regenerate-feed" type="button">Regenerate feed</button>
-      </div>
-    </div>
-    <div class="dashboard-metrics" id="dashboard-metrics"></div>
-    <section class="dashboard-products" id="products-section">
-      <div class="products-table-panel">
-        <div class="products-toolbar">
-          <div>
-            <h2>Catalog products</h2>
-            <p id="products-count">Loading products</p>
+    </header>
+    <div class="dashboard-workspace">
+      <div class="dashboard-metrics" id="dashboard-metrics"></div>
+      <section class="dashboard-products" id="products-section">
+        <div class="products-table-panel">
+          <div class="products-toolbar">
+            <div>
+              <h2>Catalog products</h2>
+              <p id="products-count">Loading products</p>
+            </div>
+            <div class="products-toolbar-actions">
+              <button class="secondary-button light button-reset" id="regenerate-feed" type="button">${this.icon('refresh')} Regenerate feed</button>
+              <button class="primary-button button-reset" type="button">Edit listing</button>
+            </div>
           </div>
           <div class="products-filter">
             <input id="products-search" type="search" placeholder="Search by name, SKU, EAN">
-            <button class="secondary-button light button-reset" id="products-search-button" type="button">Filters</button>
+            <select aria-label="Category"><option>All categories</option></select>
+            <select aria-label="Feed status"><option>All feed statuses</option></select>
+            <select aria-label="Heureka status"><option>All Heureka statuses</option></select>
+            <button class="secondary-button light button-reset" id="products-search-button" type="button">${this.icon('filter')} Filters</button>
+          </div>
+          <div class="bulk-row"><label><input type="checkbox"> 0 selected</label><button class="secondary-button light button-reset" type="button" disabled>Bulk edit</button></div>
+          <div class="table-scroll">
+            <table class="dashboard-table">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>Product</th>
+                  <th>SKU</th>
+                  <th>Heureka status</th>
+                  <th>Feed status</th>
+                  <th>Data quality</th>
+                  <th>Stock</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="products-table-body"></tbody>
+            </table>
           </div>
         </div>
+        <aside class="listing-panel" id="listing-panel"></aside>
+      </section>
+      <section class="admin-panel" id="admin-section" hidden>
+        <div class="products-toolbar">
+          <div>
+            <h2>Users</h2>
+            <p id="admin-count">Registered Auth users and Heureka usage statistics</p>
+          </div>
+          <button class="secondary-button light button-reset" type="button">+ Add user</button>
+        </div>
+        <div id="admin-metrics" class="dashboard-metrics"></div>
         <div class="table-scroll">
           <table class="dashboard-table">
             <thead>
-              <tr>
-                <th>Product</th>
-                <th>SKU</th>
-                <th>Heureka status</th>
-                <th>Feed</th>
-                <th>Quality</th>
-                <th>Stock</th>
-                <th></th>
-              </tr>
+              <tr><th>Email</th><th>Name</th><th>Type</th><th>Status</th><th>Verified</th></tr>
             </thead>
-            <tbody id="products-table-body"></tbody>
+            <tbody id="admin-users-body"></tbody>
           </table>
         </div>
-      </div>
-      <aside class="listing-panel" id="listing-panel"></aside>
-    </section>
-    <section class="admin-panel" id="admin-section" hidden>
-      <div class="products-toolbar">
-        <div>
-          <h2>Users</h2>
-          <p id="admin-count">Registered Auth users and Heureka usage statistics</p>
-        </div>
-      </div>
-      <div id="admin-metrics" class="dashboard-metrics"></div>
-      <div class="table-scroll">
-        <table class="dashboard-table">
-          <thead>
-            <tr><th>Email</th><th>Name</th><th>Type</th><th>Status</th><th>Verified</th></tr>
-          </thead>
-          <tbody id="admin-users-body"></tbody>
-        </table>
-      </div>
-    </section>
+      </section>
+    </div>
   </section>
 </main>`;
   }
@@ -537,6 +545,17 @@ export class PublicController {
     return 'quality-bad';
   }
 
+  function iconMarkup(name) {
+    var icons = {
+      cart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h15l-2 8H8L6 3H3"/><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/></svg>',
+      'check-circle': '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>',
+      database: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M12 3v9h9"/></svg>',
+      warning: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 21h20L12 3z"/><path d="M12 9v5M12 18h.01"/></svg>',
+      chart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg>'
+    };
+    return icons[name] || icons.database;
+  }
+
   function setActiveDashboardRoute() {
     var path = window.location.pathname;
     var key = path.indexOf('/dashboard/admin') === 0 ? 'admin' : (path === '/dashboard' ? 'feed' : 'products');
@@ -557,16 +576,16 @@ export class PublicController {
     var feedPill = document.getElementById('feed-pill');
     if (!root) return;
     var latestStatus = summary.latestFeed && summary.latestFeed.status ? summary.latestFeed.status : 'missing';
-    if (feedPill) feedPill.textContent = 'Feed: ' + latestStatus;
+    if (feedPill) feedPill.textContent = 'Heureka feed: ' + latestStatus;
     var items = [
-      ['Catalog products', summary.catalogProducts, 'Catalog active products'],
-      ['Published', summary.includedProducts, (summary.readyPercent || 0) + '% in feed'],
-      ['Ready', summary.activeOffers, 'Editable Heureka listings'],
-      ['Needs data', summary.needsData, 'Catalog or stock gaps'],
-      ['Revenue signal', summary.orderCount, 'Heureka orders tracked']
+      ['cart', 'Catalog products', summary.catalogProducts, 'Catalog active products'],
+      ['check-circle', 'Published', summary.includedProducts, (summary.readyPercent || 0) + '% in feed'],
+      ['database', 'Ready', summary.activeOffers, 'Editable Heureka listings'],
+      ['warning', 'Needs data', summary.needsData, 'Catalog or stock gaps'],
+      ['chart', 'Revenue signal', summary.orderCount, 'Heureka orders tracked']
     ];
     root.innerHTML = items.map(function (item) {
-      return '<article class="dash-metric"><span>' + escapeHtml(item[0]) + '</span><strong>' + escapeHtml(formatNumber(item[1])) + '</strong><p>' + escapeHtml(item[2]) + '</p></article>';
+      return '<article class="dash-metric"><span class="metric-icon">' + iconMarkup(item[0]) + '</span><div><span>' + escapeHtml(item[1]) + '</span><strong>' + escapeHtml(formatNumber(item[2])) + '</strong><p>' + escapeHtml(item[3]) + '</p></div></article>';
     }).join('');
   }
 
@@ -578,13 +597,14 @@ export class PublicController {
     body.innerHTML = products.map(function (product) {
       var image = product.primaryImageUrl ? '<img class="product-thumb" src="' + escapeHtml(product.primaryImageUrl) + '" alt="">' : '<span class="product-thumb"></span>';
       return '<tr data-product-id="' + escapeHtml(product.id) + '">' +
+        '<td><input type="checkbox" aria-label="Select product"></td>' +
         '<td><div class="product-cell">' + image + '<div><strong>' + escapeHtml(product.name) + '</strong><p>' + escapeHtml(product.brand || product.category || 'Catalog product') + '</p></div></div></td>' +
         '<td>' + escapeHtml(product.sku || '') + '</td>' +
         '<td>' + statusChip(product.heurekaStatus) + '</td>' +
         '<td>' + statusChip(product.feedStatus) + '</td>' +
         '<td><span class="feed-pill ' + qualityClass(product.dataQuality) + '">' + escapeHtml(product.dataQuality) + '%</span></td>' +
         '<td>' + escapeHtml(formatNumber(product.availableStock || 0)) + '</td>' +
-        '<td><button class="table-action button-reset" type="button" data-edit-product="' + escapeHtml(product.id) + '">Edit listing</button></td>' +
+        '<td><button class="table-action button-reset" type="button" data-edit-product="' + escapeHtml(product.id) + '">⋮</button></td>' +
       '</tr>';
     }).join('');
     Array.prototype.forEach.call(document.querySelectorAll('[data-edit-product]'), function (button) {
@@ -605,13 +625,14 @@ export class PublicController {
     panel.innerHTML = '<div class="listing-head">' +
       (product.primaryImageUrl ? '<img class="product-thumb large" src="' + escapeHtml(product.primaryImageUrl) + '" alt="">' : '<span class="product-thumb large"></span>') +
       '<div><h3>' + escapeHtml(product.name) + '</h3><p>SKU: ' + escapeHtml(product.sku || '') + '</p></div></div>' +
+      '<div class="listing-tabs"><button class="active button-reset" type="button">Listing</button><button class="button-reset" type="button">Heureka</button><button class="button-reset" type="button">History</button><button class="button-reset" type="button">Data quality</button></div>' +
       '<form class="listing-form" id="listing-form">' +
       '<label>Product name<input name="title" value="' + escapeHtml(listing.title || '') + '"></label>' +
-      '<label>Price CZK<input name="price" type="number" min="0" step="0.01" value="' + escapeHtml(listing.price || '') + '"></label>' +
-      '<label>Stock<input name="stockQuantity" type="number" min="0" value="' + escapeHtml(listing.stockQuantity || 0) + '"></label>' +
-      '<label>Description<textarea readonly>' + escapeHtml(listing.description || '') + '</textarea></label>' +
+      '<label>Category<select><option>' + escapeHtml(product.category || 'Elektronika > Catalog product') + '</option></select></label>' +
       '<label>EAN<input readonly value="' + escapeHtml(listing.ean || '') + '"></label>' +
-      '<label>Brand<input readonly value="' + escapeHtml(listing.brand || '') + '"></label>' +
+      '<div class="form-grid"><label>Brand<input readonly value="' + escapeHtml(listing.brand || '') + '"></label><label>MPN<input readonly value="' + escapeHtml(product.sku || '') + '"></label></div>' +
+      '<div class="form-grid"><label>Price CZK<input name="price" type="number" min="0" step="0.01" value="' + escapeHtml(listing.price || '') + '"></label><label>Stock<input name="stockQuantity" type="number" min="0" value="' + escapeHtml(listing.stockQuantity || 0) + '"></label></div>' +
+      '<label>Description (Heureka)<textarea readonly>' + escapeHtml(listing.description || '') + '</textarea></label>' +
       '<div class="listing-gaps">' + gaps + '</div>' +
       '<label class="check-row"><span>Include in feed</span><input name="includeInFeed" type="checkbox" ' + (product.isIncluded ? 'checked' : '') + '></label>' +
       '<label class="check-row"><span>Active listing</span><input name="isActive" type="checkbox" ' + (listing.isActive !== false ? 'checked' : '') + '></label>' +
@@ -642,7 +663,7 @@ export class PublicController {
   function loadAdminData() {
     return Promise.all([
       api('/heureka/dashboard/admin/stats'),
-      api('/heureka/dashboard/admin/users?limit=50')
+      api('/heureka/dashboard/admin/registered-users?limit=50')
     ]).then(function (results) {
       var stats = results[0].data;
       var users = results[1].data;
@@ -675,7 +696,7 @@ export class PublicController {
     if (search && search.value.trim()) params.set('search', search.value.trim());
     return Promise.all([
       api('/heureka/dashboard/summary'),
-      api('/heureka/dashboard/products?' + params.toString())
+      api('/heureka/dashboard/catalog-products?' + params.toString())
     ]).then(function (results) {
       renderMetrics(results[0].data);
       renderProducts(results[1].data.products || [], results[1].data.pagination || {});
@@ -725,6 +746,8 @@ export class PublicController {
       var adminLink = document.getElementById('admin-link');
       if (userEl) userEl.textContent = user.email || 'Authenticated user';
       if (adminLink) adminLink.hidden = !user.isAdmin;
+      var adminUsersLink = document.getElementById('admin-users-link');
+      if (adminUsersLink) adminUsersLink.hidden = !user.isAdmin;
       var route = setActiveDashboardRoute();
       loadDashboardData();
       if (route === 'admin') {
@@ -1067,42 +1090,71 @@ td b.danger { background: #ffe8ea; color: var(--red); }
 .dashboard-app {
   display: grid;
   grid-template-columns: 232px minmax(0, 1fr);
-  min-height: calc(100vh - 72px);
-  background: var(--paper);
+  min-height: 100vh;
+  background: #f7f9fb;
+  color: #111827;
 }
 .dashboard-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  padding: 24px 16px;
+  gap: 22px;
+  padding: 18px 8px 16px;
   background: #fff;
-  border-right: 1px solid var(--line);
+  border-right: 1px solid #d9e0e7;
 }
-.dashboard-title { font-size: 20px; font-weight: 900; }
-.dashboard-muted { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
-.dashboard-nav { display: grid; gap: 8px; }
+.dashboard-logo {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  padding: 0 22px 12px;
+  border-bottom: 1px solid #d9e0e7;
+  color: #00849a;
+  font-size: 29px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+.dashboard-logo strong { color: #ff6b00; }
+.dashboard-nav { display: grid; gap: 4px; }
 .dashboard-nav a {
   min-height: 42px;
   display: flex;
   align-items: center;
+  gap: 12px;
   padding: 0 14px;
-  border-radius: 8px;
-  color: var(--muted);
-  font-weight: 850;
+  border-radius: 6px;
+  color: #1f2937;
+  font-size: 14px;
+  font-weight: 750;
 }
-.dashboard-nav a:hover, .dashboard-nav a.active { background: #eef7f8; color: #00616d; }
-.dashboard-sidebar-foot { margin-top: auto; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
-.dashboard-workspace { min-width: 0; padding: 22px; }
-.dashboard-topline {
+.dashboard-nav a.nav-child {
+  min-height: 36px;
+  margin-left: 38px;
+  padding: 0 12px;
+  color: #334155;
+  font-weight: 650;
+}
+.dashboard-nav a:hover, .dashboard-nav a.active { background: #e8f4f6; color: #006f80; }
+.nav-icon svg, .metric-icon svg, .icon-button svg, .products-toolbar-actions svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.dashboard-sidebar-foot { margin-top: auto; display: grid; gap: 10px; padding: 0 12px; color: #64748b; font-size: 12px; }
+.dashboard-sidebar-foot span { display: flex; align-items: center; gap: 6px; }
+.sidebar-collapse { text-align: left; color: #334155; font-size: 12px; }
+.dashboard-shell { min-width: 0; display: grid; grid-template-rows: 64px minmax(0, 1fr); }
+.dashboard-topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
-  margin-bottom: 18px;
+  gap: 16px;
+  padding: 0 24px;
+  background: #fff;
+  border-bottom: 1px solid #d9e0e7;
 }
-.dashboard-topline h1 { font-size: 24px; line-height: 1.15; margin-bottom: 6px; }
-.dashboard-topline p { margin: 0; color: var(--muted); }
-.dashboard-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.dashboard-topbar h1 { font-size: 16px; line-height: 1; margin: 0; font-weight: 850; }
+.topbar-status { display: flex; align-items: center; gap: 16px; color: #475569; font-size: 13px; }
+.topbar-status > span { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.icon-button { width: 34px; height: 34px; display: inline-grid; place-items: center; border: 0; border-left: 1px solid #e2e8f0; color: #334155; background: transparent; cursor: pointer; }
+.user-avatar { width: 34px; height: 34px; border-radius: 50%; justify-content: center; background: #e2e8f0; color: #334155; font-weight: 850; }
+.dashboard-user-name { max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
+.dashboard-workspace { min-width: 0; padding: 18px 24px 20px; }
 .feed-pill {
   display: inline-flex;
   align-items: center;
@@ -1129,65 +1181,84 @@ td b.danger { background: #ffe8ea; color: var(--red); }
 }
 .dashboard-metrics {
   display: grid;
-  grid-template-columns: repeat(5, minmax(140px, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
+  grid-template-columns: repeat(5, minmax(138px, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
 }
 .dash-metric {
-  min-height: 82px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid #d9e0e7;
+  border-radius: 3px;
   background: #fff;
 }
-.dash-metric span { color: var(--muted); font-size: 12px; font-weight: 850; }
-.dash-metric strong { display: block; margin-top: 8px; font-size: 24px; line-height: 1; }
-.dash-metric p { margin: 7px 0 0; color: var(--muted); font-size: 12px; }
+.metric-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; background: #e6f7f8; color: #00849a; flex: 0 0 auto; }
+.dash-metric:nth-child(2) .metric-icon, .dash-metric:nth-child(3) .metric-icon { background: #e8f8ec; color: #1f9d45; }
+.dash-metric:nth-child(4) .metric-icon { background: #fff4df; color: #d97706; }
+.dash-metric:nth-child(5) .metric-icon { background: #e6f7f8; color: #00849a; }
+.dash-metric span:not(.metric-icon) { color: #64748b; font-size: 12px; font-weight: 800; }
+.dash-metric strong { display: block; margin-top: 5px; font-size: 22px; line-height: 1; }
+.dash-metric p { margin: 5px 0 0; color: #64748b; font-size: 12px; }
 .dashboard-products {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 390px;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) 430px;
+  gap: 0;
 }
 .products-table-panel, .listing-panel, .admin-panel {
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  border: 1px solid #d9e0e7;
+  border-radius: 3px;
   background: #fff;
 }
+.products-table-panel { border-right: 0; }
 .products-toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  padding: 16px;
-  border-bottom: 1px solid var(--line);
+  padding: 14px 18px;
 }
 .products-toolbar h2 { font-size: 18px; margin-bottom: 4px; }
-.products-toolbar p { margin: 0; color: var(--muted); }
-.products-filter { display: flex; gap: 10px; }
-.products-filter input, .listing-form input, .listing-form textarea {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 10px 11px;
-  font: inherit;
+.products-toolbar p { margin: 0; color: #64748b; }
+.products-toolbar-actions { display: flex; gap: 10px; align-items: center; }
+.products-toolbar-actions .secondary-button svg { width: 16px; height: 16px; margin-right: 7px; vertical-align: -3px; }
+.products-filter {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.5fr) repeat(3, minmax(130px, 0.7fr)) auto;
+  gap: 12px;
+  padding: 0 18px 14px;
 }
-.products-filter input { width: 260px; }
+.products-filter input, .products-filter select, .listing-form input, .listing-form textarea, .listing-form select {
+  width: 100%;
+  border: 1px solid #cfd8e3;
+  border-radius: 3px;
+  padding: 9px 10px;
+  font: inherit;
+  background: #fff;
+}
+.bulk-row { height: 42px; display: flex; align-items: center; gap: 14px; padding: 0 18px; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; color: #475569; font-size: 12px; }
 .table-scroll { overflow-x: auto; }
-.dashboard-table { width: 100%; border-collapse: collapse; min-width: 760px; }
-.dashboard-table th, .dashboard-table td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
-.dashboard-table th { color: var(--muted); background: #f8fafc; font-size: 12px; font-weight: 900; }
+.dashboard-table { width: 100%; border-collapse: collapse; min-width: 820px; }
+.dashboard-table th, .dashboard-table td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; text-align: left; vertical-align: middle; }
+.dashboard-table th { color: #64748b; background: #f8fafc; font-size: 11px; font-weight: 900; }
 .product-cell { display: flex; align-items: center; gap: 10px; min-width: 240px; }
 .product-cell p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
-.product-thumb { width: 42px; height: 42px; border-radius: 8px; background: #e5edf2; border: 1px solid var(--line); object-fit: cover; flex: 0 0 auto; }
+.product-thumb { width: 34px; height: 34px; border-radius: 3px; background: #e5edf2; border: 1px solid #d9e0e7; object-fit: cover; flex: 0 0 auto; }
 .product-thumb.large { width: 54px; height: 54px; }
-.table-action { border: 0; background: transparent; color: #00616d; font-weight: 900; cursor: pointer; }
-.listing-panel { min-height: 560px; padding: 16px; }
-.listing-head { display: flex; gap: 12px; align-items: center; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
-.listing-head h3 { margin-bottom: 4px; }
-.listing-head p { margin: 0; color: var(--muted); }
-.listing-form { display: grid; gap: 12px; padding-top: 14px; }
-.listing-form label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 900; }
-.listing-form textarea { min-height: 92px; resize: vertical; }
+.table-action { border: 0; background: transparent; color: #334155; font-size: 22px; font-weight: 900; cursor: pointer; }
+.listing-panel { min-height: 620px; padding: 18px; border-left: 1px solid #d9e0e7; }
+.listing-head { display: flex; gap: 12px; align-items: center; padding-bottom: 16px; }
+.listing-head h3 { margin-bottom: 4px; font-size: 16px; }
+.listing-head p { margin: 0; color: #64748b; }
+.listing-tabs { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid #d9e0e7; margin: 0 -18px 16px; }
+.listing-tabs button { min-height: 42px; border: 0; background: transparent; color: #475569; font-weight: 800; cursor: pointer; }
+.listing-tabs button.active { color: #007c8c; box-shadow: inset 0 -2px 0 #007c8c; }
+.listing-form { display: grid; gap: 12px; padding-top: 0; }
+.listing-form label { display: grid; gap: 6px; color: #64748b; font-size: 12px; font-weight: 850; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.listing-form textarea { min-height: 116px; resize: vertical; }
 .check-row { display: flex !important; flex-direction: row; align-items: center; justify-content: space-between; color: var(--ink) !important; }
 .check-row input { width: 22px; height: 22px; }
 .listing-gaps { display: flex; flex-wrap: wrap; gap: 8px; }

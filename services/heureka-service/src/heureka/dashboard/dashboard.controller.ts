@@ -17,7 +17,7 @@ export class DashboardController {
     return { success: true, data: await this.dashboardService.getSummary(req.user, feedType) };
   }
 
-  @Get('products')
+  @Get('catalog-products')
   async products(
     @Req() req: any,
     @Query('search') search = '',
@@ -54,7 +54,7 @@ export class DashboardController {
     return { success: true, data: await this.dashboardService.regenerateFeed(req.user, body?.feedType || 'heureka_cz') };
   }
 
-  @Get('admin/users')
+  @Get('admin/registered-users')
   async adminUsers(@Req() req: any, @Query() query: Record<string, string>) {
     return { success: true, data: await this.dashboardService.getAdminUsers(req.user, req.headers.authorization, query) };
   }
