@@ -1,12 +1,15 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { PrismaService, LoggerService, CatalogClientService, WarehouseClientService } from '@heureka/shared';
 import { FeedStatusSummary, FeedValidationSnapshot, summarizeFeedStatus, validateHeurekaFeed } from './feed-lifecycle';
 import { buildCatalogFeedReadinessResponse, CatalogFeedReadinessResponse, CatalogFeedReadinessSnapshot } from './feed-readiness';
+import { HeurekaOperationEventService } from '../operations/operation-event.service';
 
 interface FeedGenerationResult {
   xml: string;
   validation: FeedValidationSnapshot;
 }
+
+type StockAvailabilityLookup = Map<string, number | null>;
 
 @Injectable()
 export class FeedService {
@@ -18,6 +21,7 @@ export class FeedService {
     private readonly catalogClient: CatalogClientService,
     private readonly warehouseClient: WarehouseClientService,
     loggerService: LoggerService,
+    @Optional() private readonly operationEvents?: HeurekaOperationEventService,
   ) {
     this.logger = loggerService;
     this.logger.setContext('FeedService');
@@ -39,12 +43,12 @@ export class FeedService {
         const includedProducts = await this.prisma.heurekaProduct.findMany({ where: { isIncluded: true } });
         const productIds = includedProducts.map((p) => p.productId);
         this.logger.log(`Generating feed for ${productIds.length} products`, { feedType, feedId: feed.id });
+        const stockByProductId = await this.buildStockAvailabilityLookup(productIds);
 
         const products = await Promise.all(productIds.map(async (productId) => {
           try {
-            const [product, stock, pricing, media, feedSnapshot] = await Promise.all([
+            const [product, pricing, media, feedSnapshot] = await Promise.all([
               this.catalogClient.getProductById(productId),
-              this.warehouseClient.getTotalAvailable(productId),
               this.catalogClient.getProductPricing(productId),
               this.catalogClient.getProductMedia(productId),
               this.catalogClient.getHeurekaFeedSnapshot(productId, feedType),
@@ -53,7 +57,7 @@ export class FeedService {
             const feedFields = this.buildHeurekaFeedFields(product, pricing, mediaItems, settings, feedSnapshot);
             return {
               ...product,
-              stock: Number.isFinite(Number(stock)) ? Number(stock) : 0,
+              stock: this.stockFromLookup(stockByProductId, productId) ?? 0,
               price: this.optionalNumber(feedFields.PRICE_VAT) ?? 0,
               images: mediaItems.filter((m: any) => m.type === 'image'),
               feedFields,
@@ -81,9 +85,29 @@ export class FeedService {
 
         await this.prisma.heurekaFeed.update({ where: { id: feed.id }, data: { status: 'completed', productCount: validProducts.length, generatedAt, feedUrl: `${process.env.SHOP_URL || settings.shopUrl}/feeds/${feedType}.xml` } });
         this.logger.log(`Feed generated successfully: ${validProducts.length} products`, { feedId: feed.id, feedType, generationMs, zeroStockExcludedCount, failedFetchCount });
+        await this.operationEvents?.append({
+          feedType,
+          action: 'feed_generation_completed',
+          entityType: 'feed_service',
+          entityId: feed.id,
+          status: validation.status,
+          errorSummary: `${feedType} feed generation completed with ${validProducts.length} public products`,
+          requestSummary: { feedType, includedProductCount: productIds.length },
+          responseSummary: { feedId: feed.id, generationMs, zeroStockExcludedCount, failedFetchCount, publicProductCount: validProducts.length },
+        });
         return { xml, validation };
       } catch (error: any) {
         if (!(error instanceof BadRequestException)) await this.prisma.heurekaFeed.update({ where: { id: feed.id }, data: { status: 'failed' } });
+        await this.operationEvents?.append({
+          feedType,
+          action: 'feed_generation_failed',
+          entityType: 'feed_service',
+          entityId: feed.id,
+          status: 'failed',
+          requestSummary: { feedType },
+          responseSummary: { feedId: feed.id },
+          errorSummary: String(error?.message || `${feedType} feed generation failed`).slice(0, 1000),
+        });
         throw error;
       }
     } catch (error: any) {
@@ -204,6 +228,17 @@ ${items}
       update: { isIncluded: true },
     });
 
+    await this.operationEvents?.append({
+      feedType,
+      action: 'feed_product_included',
+      entityType: 'feed_service',
+      entityId: feedProduct.id,
+      status: 'included',
+      errorSummary: `Catalog product included in ${feedType} feed`,
+      productId: normalizedProductId,
+      requestSummary: { requestedBy: this.auditActor(metadata.requestedBy), sourceHash: metadata.sourceHash || null, readiness: readinessState },
+    });
+
     return {
       action: 'include_heureka_product',
       productId: normalizedProductId,
@@ -233,6 +268,17 @@ ${items}
       : await this.prisma.heurekaProduct.create({ data: { productId: normalizedProductId, isIncluded: false } });
     const readiness = await this.getProductFeedReadiness(normalizedProductId, feedType);
 
+    await this.operationEvents?.append({
+      feedType,
+      action: 'feed_product_excluded',
+      entityType: 'feed_service',
+      entityId: feedProduct.id,
+      status: 'excluded',
+      errorSummary: `Catalog product excluded from ${feedType} feed`,
+      productId: normalizedProductId,
+      requestSummary: { requestedBy: this.auditActor(metadata.requestedBy) },
+    });
+
     return {
       action: 'exclude_heureka_product',
       productId: normalizedProductId,
@@ -251,7 +297,17 @@ ${items}
 
   async getProductFeedReadiness(productId: string, feedType: string = 'heureka_cz'): Promise<CatalogFeedReadinessResponse> {
     if (!productId || !productId.trim()) throw new BadRequestException('productId is required');
-    const snapshot = await this.buildReadinessSnapshot(productId.trim(), feedType);
+    const normalizedProductId = productId.trim();
+    const [settings, stockByProductId] = await Promise.all([
+      this.findReadinessSettings(feedType),
+      this.buildStockAvailabilityLookup([normalizedProductId]),
+    ]);
+    const snapshot = await this.buildReadinessSnapshot(
+      normalizedProductId,
+      feedType,
+      settings,
+      this.stockFromLookup(stockByProductId, normalizedProductId),
+    );
     return buildCatalogFeedReadinessResponse(feedType, [snapshot]);
   }
 
@@ -261,8 +317,23 @@ ${items}
     if (!requestedProductIds.length) throw new BadRequestException('productIds must include at least one product id');
     if (requestedProductIds.length > 100) throw new BadRequestException('Catalog feed readiness supports at most 100 products per request');
 
-    const snapshots = await Promise.all(requestedProductIds.map((productId) => this.buildReadinessSnapshot(productId, feedType)));
+    const [settings, stockByProductId] = await Promise.all([
+      this.findReadinessSettings(feedType),
+      this.buildStockAvailabilityLookup(requestedProductIds),
+    ]);
+    const snapshots = await Promise.all(requestedProductIds.map((productId) => this.buildReadinessSnapshot(
+      productId,
+      feedType,
+      settings,
+      this.stockFromLookup(stockByProductId, productId),
+    )));
     return buildCatalogFeedReadinessResponse(feedType, snapshots);
+  }
+
+  private auditActor(value: unknown): string {
+    const raw = String(value || '').trim();
+    if (!raw) return 'catalog-microservice';
+    return raw.includes('@') ? 'dashboard-user' : raw.slice(0, 120);
   }
 
   private async findReadinessSettings(feedType: string): Promise<any | null> {
@@ -276,21 +347,23 @@ ${items}
     }
   }
 
-  private async buildReadinessSnapshot(productId: string, feedType: string): Promise<CatalogFeedReadinessSnapshot> {
-    const settings = await this.findReadinessSettings(feedType);
+  private async buildReadinessSnapshot(productId: string, feedType: string, settings?: any | null, stockAvailability?: number | null): Promise<CatalogFeedReadinessSnapshot> {
+    const resolvedSettings = settings === undefined ? await this.findReadinessSettings(feedType) : settings;
     try {
       const product = await this.catalogClient.getProductById(productId);
-      const [stock, pricing, media, feedSnapshot] = await Promise.all([
-        this.warehouseClient.getTotalAvailable(productId),
+      const [pricing, media, feedSnapshot] = await Promise.all([
         this.catalogClient.getProductPricing(productId),
         this.catalogClient.getProductMedia(productId),
         this.catalogClient.getHeurekaFeedSnapshot(productId, feedType),
       ]);
       const mediaItems = Array.isArray(media) ? media : [];
-      const feedFields = this.buildHeurekaFeedFields(product, pricing, mediaItems, settings, feedSnapshot);
+      const feedFields = this.buildHeurekaFeedFields(product, pricing, mediaItems, resolvedSettings, feedSnapshot);
       const candidateFeedFields = Object.keys(feedFields).length
         ? Object.keys(feedFields)
         : ['ITEM_ID', 'PRODUCTNAME', 'DESCRIPTION', 'URL', 'IMGURL', 'PRICE_VAT', 'DELIVERY_DATE', 'DELIVERY', 'EAN', 'MANUFACTURER', 'CATEGORYTEXT'];
+      const stock = stockAvailability === undefined
+        ? await this.warehouseClient.getTotalAvailable(productId)
+        : stockAvailability;
 
       return {
         productId,
@@ -302,7 +375,7 @@ ${items}
         primaryImageUrl: this.optionalString(feedFields.IMGURL) || null,
         priceVat: feedFields.PRICE_VAT ?? null,
         availableStock: Number.isFinite(Number(stock)) ? Number(stock) : null,
-        settingsActive: Boolean(settings?.isActive),
+        settingsActive: Boolean(resolvedSettings?.isActive),
         renderableXml: this.canRenderFeedFields(feedFields),
         candidateFeedFields,
       };
@@ -311,9 +384,32 @@ ${items}
       return {
         productId,
         productFound: false,
-        settingsActive: Boolean(settings?.isActive),
+        settingsActive: Boolean(resolvedSettings?.isActive),
       };
     }
+  }
+
+  private async buildStockAvailabilityLookup(productIds: string[]): Promise<StockAvailabilityLookup> {
+    const normalizedProductIds = Array.from(new Set(
+      productIds.map((productId) => String(productId || '').trim()).filter(Boolean),
+    ));
+    if (!normalizedProductIds.length) return new Map();
+
+    const availabilityRows = await this.warehouseClient.getAvailabilityBatch(normalizedProductIds);
+    const lookup: StockAvailabilityLookup = new Map();
+    for (const row of availabilityRows || []) {
+      const productId = String(row?.productId || '').trim();
+      if (!productId) continue;
+      const totalAvailable = Number(row?.totalAvailable);
+      lookup.set(productId, Number.isFinite(totalAvailable) ? totalAvailable : null);
+    }
+    return lookup;
+  }
+
+  private stockFromLookup(stockByProductId: StockAvailabilityLookup, productId: string): number | null {
+    if (!stockByProductId.has(productId)) return null;
+    const stock = stockByProductId.get(productId);
+    return Number.isFinite(Number(stock)) ? Number(stock) : null;
   }
 
   private isProductActive(product: any): boolean {

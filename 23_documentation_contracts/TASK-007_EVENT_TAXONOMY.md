@@ -79,6 +79,40 @@ The following content is forbidden in event payloads, examples, logs, tests, rep
 
 Allowed examples use placeholders such as `FEED_RUN_SYNTHETIC_001`, `PRODUCT_REF_SYNTHETIC_001`, `sha256:<synthetic-hash>`, `TENANT_SYNTHETIC_001`, and URLs under `https://example.invalid/`.
 
+## TASK-010 Operation Audit Adapter
+
+`heureka.operation.audit.v1` is the Heureka-local operation/audit schema adapter
+for durable operations history. It is non-emitting by default and exists to make
+the dashboard operation evidence contract explicit while the ecosystem-wide
+shared operation/audit package remains unavailable.
+
+Required envelope fields:
+
+| Field | Type | Required | Redaction rule |
+|---|---|---|---|
+| `event_name` | string | yes | Operation action name only; no raw payload data. |
+| `event_version` | string | yes | `1.0.0`. |
+| `occurred_at` | ISO-8601 string | yes | Durable event completion or creation time. |
+| `source_service` | string | yes | Constant `heureka-service`. |
+| `source_component` | string | yes | Sanitized component label. |
+| `environment` | string | yes | Constant `runtime`; no hostnames. |
+| `correlation_ref` | string | yes | Correlation/idempotency reference only; no headers or tokens. |
+| `idempotency_key` | string | yes | Durable idempotency key or deterministic fallback. |
+| `schema_ref` | string | yes | `heureka.operation.audit.v1`. |
+
+Logging DTO projection fields:
+
+| Field | Type | Required | Redaction rule |
+|---|---|---|---|
+| `level` | string | yes | Derived from status: failures -> `error`, blockers/skips -> `warn`, otherwise `info`. |
+| `message` | string | yes | Redacted summary, maximum 500 characters. |
+| `service` | string | yes | Constant `heureka-service`. |
+| `timestamp` | ISO-8601 string | yes | Same as `occurred_at`. |
+| `correlation_id` | string | no | Sanitized correlation id when present. |
+| `metadata` | object | yes | Schema/action/status/durability plus redacted context only. |
+
+Runtime emission status: `[MISSING: ecosystem-wide shared operation/audit schema package]`.
+
 ## Event Catalog
 
 | Event name | Purpose | Producer | Consumer class | Status |

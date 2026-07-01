@@ -18,6 +18,20 @@ spec:
     - host: heureka.alfares.cz
       http:
         paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: heureka-api-gateway
+                port:
+                  number: 3801
+          - path: /health
+            pathType: Prefix
+            backend:
+              service:
+                name: heureka-service
+                port:
+                  number: 3800
           - path: /
             pathType: Prefix
             backend:

@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '@heureka/shared';
 import { HeurekaOrderIngestionGuard } from './order-ingestion.guard';
 import { HeurekaOrdersService } from './orders.service';
 
@@ -14,12 +15,14 @@ export class HeurekaOrdersController {
   }
 
   @Get()
+  @UseGuards(JwtAuthGuard)
   async listOrders(@Query('forwarded') forwarded?: string) {
     const orders = await this.ordersService.listOrders(forwarded);
     return { success: true, data: orders };
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard)
   async getOrder(@Param('id') id: string) {
     const order = await this.ordersService.getOrder(id);
     return { success: true, data: order };

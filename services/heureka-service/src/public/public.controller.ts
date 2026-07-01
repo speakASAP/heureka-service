@@ -366,12 +366,12 @@ export class PublicController {
           </div>
           <div class="products-filter">
             <input id="products-search" type="search" placeholder="Search by name, SKU, EAN">
-            <select aria-label="Category"><option>All categories</option></select>
-            <select aria-label="Feed status"><option>All feed statuses</option></select>
-            <select aria-label="Heureka status"><option>All Heureka statuses</option></select>
+            <select id="products-gap-filter" aria-label="Data gap"><option value="">All data states</option><option value="missing_category">Missing category</option><option value="has_category">Has category</option><option value="image">Missing image</option><option value="stock">Zero stock</option></select>
+            <select id="products-feed-status" aria-label="Feed status"><option value="">All feed statuses</option><option value="included">Included</option><option value="excluded">Excluded</option></select>
+            <select id="products-workflow-status" aria-label="Workflow status"><option value="">All workflow statuses</option><option value="ready">Ready</option><option value="draft">Draft</option><option value="included">Included</option><option value="blocked">Blocked</option></select>
             <button class="secondary-button light button-reset" id="products-search-button" type="button">${this.icon('filter')} Filters</button>
           </div>
-          <div class="bulk-row"><label><input type="checkbox"> 0 selected</label><button class="secondary-button light button-reset" type="button" disabled>Bulk edit</button></div>
+          <div class="bulk-row"><label><input id="products-select-all" type="checkbox"> <span id="bulk-selected-count">0 selected</span></label><button class="secondary-button light button-reset" id="bulk-readiness-preview" type="button" disabled>Preview readiness</button><span id="bulk-readiness-summary"></span></div>
           <div class="table-scroll">
             <table class="dashboard-table">
               <thead>
@@ -428,6 +428,15 @@ export class PublicController {
           </table>
         </div>
         <div class="dashboard-notice" id="runtime-status"></div>
+        <div class="table-scroll operations-timeline">
+          <table class="dashboard-table">
+            <thead>
+              <tr><th>Time</th><th>Type</th><th>Source</th><th>Status</th><th>Summary</th></tr>
+            </thead>
+            <tbody id="operation-events-body"></tbody>
+          </table>
+        </div>
+        <div class="dashboard-notice" id="operation-events-missing"></div>
       </section>
       <section class="admin-panel" id="settings-section" hidden>
         <div class="products-toolbar">
@@ -522,6 +531,7 @@ export class PublicController {
     var status = document.getElementById('callback-status');
     var actions = document.getElementById('callback-actions');
     var hash = window.location.hash ? window.location.hash.slice(1) : '';
+    if (hash) window.history.replaceState(null, document.title, AUTH_CALLBACK_PATH);
     var params = new URLSearchParams(hash);
     var accessToken = params.get('access_token');
     var refreshToken = params.get('refresh_token');
@@ -590,9 +600,22 @@ export class PublicController {
     return new Intl.NumberFormat('cs-CZ').format(Number(value || 0));
   }
 
+  function humanize(value) {
+    return text(value || 'unknown').replace(/_/g, ' ');
+  }
+
   function statusChip(status) {
     var normalized = text(status || 'unknown');
-    return '<span class="feed-pill status-' + escapeHtml(normalized.replace(/_/g, '-')) + '">' + escapeHtml(normalized.replace(/_/g, ' ')) + '</span>';
+    return '<span class="feed-pill status-' + escapeHtml(normalized.replace(/_/g, '-')) + '">' + escapeHtml(humanize(normalized)) + '</span>';
+  }
+
+  function renderBlockers(product) {
+    var blockers = product.blockers && product.blockers.length
+      ? product.blockers
+      : (product.gaps || []).map(function (gap) { return { code: String(gap).toUpperCase(), message: gap }; });
+    return blockers.length
+      ? blockers.map(function (blocker) { return '<span class="feed-pill quality-warn">' + escapeHtml(blocker.code || blocker.field || blocker.message) + '</span>'; }).join('')
+      : '<span class="feed-pill quality-good">Ready</span>';
   }
 
   function qualityClass(value) {
@@ -658,14 +681,14 @@ export class PublicController {
     var body = document.getElementById('products-table-body');
     var count = document.getElementById('products-count');
     if (!body) return;
-    if (count) count.textContent = formatNumber((pagination && pagination.total) || products.length) + ' products';
+    if (count) count.textContent = formatNumber((pagination && pagination.filtered) || products.length) + ' shown / ' + formatNumber((pagination && pagination.total) || products.length) + ' products';
     body.innerHTML = products.map(function (product) {
       var image = product.primaryImageUrl ? '<img class="product-thumb" src="' + escapeHtml(product.primaryImageUrl) + '" alt="">' : '<span class="product-thumb"></span>';
       return '<tr data-product-id="' + escapeHtml(product.id) + '">' +
-        '<td><input type="checkbox" aria-label="Select product"></td>' +
+        '<td><input type="checkbox" data-select-product="' + escapeHtml(product.id) + '" aria-label="Select product"></td>' +
         '<td><div class="product-cell">' + image + '<div><strong>' + escapeHtml(product.name) + '</strong><p>' + escapeHtml(product.brand || product.category || 'Catalog product') + '</p></div></div></td>' +
         '<td>' + escapeHtml(product.sku || '') + '</td>' +
-        '<td>' + statusChip(product.heurekaStatus) + '</td>' +
+        '<td>' + statusChip(product.workflowStatus || product.heurekaStatus) + '<p class="table-subtext">Next: ' + escapeHtml(humanize(product.nextAction)) + '</p></td>' +
         '<td>' + statusChip(product.feedStatus) + '</td>' +
         '<td><span class="feed-pill ' + qualityClass(product.dataQuality) + '">' + escapeHtml(product.dataQuality) + '%</span></td>' +
         '<td>' + escapeHtml(formatNumber(product.availableStock || 0)) + '</td>' +
@@ -677,20 +700,83 @@ export class PublicController {
         loadProductDetail(button.getAttribute('data-edit-product'));
       });
     });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-select-product]'), function (checkbox) {
+      checkbox.addEventListener('change', updateBulkSelection);
+    });
+    var selectAll = document.getElementById('products-select-all');
+    if (selectAll) {
+      selectAll.checked = false;
+      selectAll.addEventListener('change', function () {
+        Array.prototype.forEach.call(document.querySelectorAll('[data-select-product]'), function (checkbox) {
+          checkbox.checked = selectAll.checked;
+        });
+        updateBulkSelection();
+      });
+    }
+    updateBulkSelection();
     if (products[0]) loadProductDetail(products[0].id);
+  }
+
+  function selectedProductIds() {
+    return Array.prototype.map.call(document.querySelectorAll('[data-select-product]:checked'), function (checkbox) {
+      return checkbox.getAttribute('data-select-product');
+    }).filter(Boolean);
+  }
+
+  function updateBulkSelection() {
+    var ids = selectedProductIds();
+    var count = document.getElementById('bulk-selected-count');
+    var button = document.getElementById('bulk-readiness-preview');
+    var summary = document.getElementById('bulk-readiness-summary');
+    if (count) count.textContent = ids.length + ' selected';
+    if (button) button.disabled = ids.length === 0;
+    if (summary && ids.length === 0) summary.textContent = '';
+  }
+
+  function previewSelectedReadiness() {
+    var ids = selectedProductIds();
+    var summary = document.getElementById('bulk-readiness-summary');
+    var button = document.getElementById('bulk-readiness-preview');
+    if (!ids.length) return;
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Checking';
+    }
+    if (summary) summary.textContent = 'Checking selected products';
+    api('/heureka/feed/readiness/bulk', { method: 'POST', body: { feedType: 'heureka_cz', productIds: ids } })
+      .then(function (payload) {
+        var data = payload.data || {};
+        var counts = data.blockerCounts || {};
+        var blockerText = Object.keys(counts).length
+          ? Object.keys(counts).map(function (key) { return key + ': ' + counts[key]; }).join(', ')
+          : 'no blockers';
+        if (summary) summary.textContent = 'Ready ' + formatNumber(data.summary && data.summary.ready || 0) + ' / ' + formatNumber(data.summary && data.summary.total || ids.length) + '; ' + blockerText;
+      })
+      .catch(showDashboardError)
+      .finally(function () {
+        if (button) {
+          button.textContent = 'Preview readiness';
+          updateBulkSelection();
+        }
+      });
   }
 
   function renderProductDetail(product) {
     var panel = document.getElementById('listing-panel');
     if (!panel) return;
     var listing = product.listing || {};
-    var gaps = product.gaps && product.gaps.length
-      ? product.gaps.map(function (gap) { return '<span class="feed-pill quality-warn">' + escapeHtml(gap) + '</span>'; }).join('')
-      : '<span class="feed-pill quality-good">Ready</span>';
+    var gaps = renderBlockers(product);
+    var profile = product.catalogMarketplaceProfile || {};
+    var preview = profile.contentPreview || {};
+    var fields = profile.marketplaceFields || {};
+    var previewLabel = preview.contractVersion || preview.version || preview.status || profile.status || 'detail preview';
+    var fieldCount = Array.isArray(fields.fields) ? fields.fields.length : 0;
     panel.innerHTML = '<div class="listing-head">' +
       (product.primaryImageUrl ? '<img class="product-thumb large" src="' + escapeHtml(product.primaryImageUrl) + '" alt="">' : '<span class="product-thumb large"></span>') +
       '<div><h3>' + escapeHtml(product.name) + '</h3><p>SKU: ' + escapeHtml(product.sku || '') + '</p></div></div>' +
       '<div class="listing-tabs"><button class="active button-reset" type="button">Listing</button><button class="button-reset" type="button">Heureka</button><button class="button-reset" type="button">History</button><button class="button-reset" type="button">Data quality</button></div>' +
+      '<div class="workflow-panel"><strong>' + escapeHtml(humanize(product.workflowStatus)) + '</strong><p>Next action: ' + escapeHtml(humanize(product.nextAction)) + '</p><div class="listing-gaps">' + gaps + '</div></div>' +
+      '<div class="catalog-preview"><strong>Catalog Heureka preview</strong><p>Status: ' + escapeHtml(profile.status || 'unknown') + '</p><p>Preview: ' + escapeHtml(previewLabel) + '</p><p>Marketplace fields: ' + escapeHtml(formatNumber(fieldCount)) + '</p></div>' +
       '<form class="listing-form" id="listing-form">' +
       '<label>Product name<input name="title" value="' + escapeHtml(listing.title || '') + '"></label>' +
       '<label>Heureka category<input name="category" value="' + escapeHtml(listing.category || product.category || '') + '"></label>' +
@@ -698,7 +784,6 @@ export class PublicController {
       '<div class="form-grid"><label>Brand<input readonly value="' + escapeHtml(listing.brand || '') + '"></label><label>MPN<input readonly value="' + escapeHtml(product.sku || '') + '"></label></div>' +
       '<div class="form-grid"><label>Price CZK<input name="price" type="number" min="0" step="0.01" value="' + escapeHtml(listing.price || '') + '"></label><label>Stock<input name="stockQuantity" type="number" min="0" value="' + escapeHtml(listing.stockQuantity || 0) + '"></label></div>' +
       '<label>Description (Heureka)<textarea readonly>' + escapeHtml(listing.description || '') + '</textarea></label>' +
-      '<div class="listing-gaps">' + gaps + '</div>' +
       '<label class="check-row"><span>Include in feed</span><input name="includeInFeed" type="checkbox" ' + (product.isIncluded ? 'checked' : '') + '></label>' +
       '<label class="check-row"><span>Active listing</span><input name="isActive" type="checkbox" ' + (listing.isActive !== false ? 'checked' : '') + '></label>' +
       '<button class="primary-button button-reset" type="submit">Save changes</button>' +
@@ -753,6 +838,20 @@ export class PublicController {
     body.innerHTML = (data.orders || []).map(function (order) {
       return '<tr><td>' + escapeHtml(order.externalOrderId || '') + '</td><td>' + escapeHtml(order.orderId || '') + '</td><td>' + escapeHtml(order.customerEmail || order.customerPhone || '') + '</td><td>' + escapeHtml(formatNumber(order.total || 0)) + ' ' + escapeHtml(order.currency || 'CZK') + '</td><td>' + statusChip(order.status) + '</td><td>' + (order.forwarded ? statusChip('forwarded') : statusChip('local')) + '</td><td>' + escapeHtml(formatDate(order.createdAt)) + '</td></tr>';
     }).join('') || '<tr><td colspan="7">No Heureka orders found</td></tr>';
+  }
+
+  function renderOperationEvents(data) {
+    var body = document.getElementById('operation-events-body');
+    var missing = document.getElementById('operation-events-missing');
+    if (body) {
+      body.innerHTML = (data.operationEvents || []).map(function (event) {
+        return '<tr><td>' + escapeHtml(formatDate(event.timestamp)) + '</td><td>' + escapeHtml(humanize(event.eventType)) + '</td><td>' + escapeHtml(event.source || '') + '</td><td>' + statusChip(event.status) + '</td><td>' + escapeHtml(event.summary || '') + '</td></tr>';
+      }).join('') || '<tr><td colspan="5">No operation events found</td></tr>';
+    }
+    if (missing) {
+      var missingItems = data.missing || [];
+      missing.innerHTML = '<strong>Audit contract status</strong><p>' + escapeHtml(missingItems.join(', ') || 'Durable Heureka operation events active') + '</p>';
+    }
   }
 
   function renderOperations(data) {
@@ -816,12 +915,14 @@ export class PublicController {
   }
 
   function loadOperationsData() {
-    return api('/heureka/dashboard/operations')
-      .then(function (payload) {
-        renderMetrics(payload.data.summary || {});
-        renderOperations(payload.data);
-      })
-      .catch(showDashboardError);
+    return Promise.all([
+      api('/heureka/dashboard/operations'),
+      api('/heureka/dashboard/operations/history')
+    ]).then(function (results) {
+      renderMetrics(results[0].data.summary || {});
+      renderOperations(results[0].data);
+      renderOperationEvents(results[1].data);
+    }).catch(showDashboardError);
   }
 
   function loadSettingsData() {
@@ -871,8 +972,14 @@ export class PublicController {
 
   function loadDashboardData() {
     var search = document.getElementById('products-search');
+    var feedStatus = document.getElementById('products-feed-status');
+    var workflowStatus = document.getElementById('products-workflow-status');
+    var gap = document.getElementById('products-gap-filter');
     var params = new URLSearchParams({ limit: '20' });
     if (search && search.value.trim()) params.set('search', search.value.trim());
+    if (feedStatus && feedStatus.value) params.set('feedStatus', feedStatus.value);
+    if (workflowStatus && workflowStatus.value) params.set('workflowStatus', workflowStatus.value);
+    if (gap && gap.value) params.set('gap', gap.value);
     return Promise.all([
       api('/heureka/dashboard/summary'),
       api('/heureka/dashboard/catalog-products?' + params.toString())
@@ -905,6 +1012,12 @@ export class PublicController {
     if (refresh) refresh.addEventListener('click', loadCurrentRoute);
     var search = document.getElementById('products-search-button');
     if (search) search.addEventListener('click', loadDashboardData);
+    var bulkPreview = document.getElementById('bulk-readiness-preview');
+    if (bulkPreview) bulkPreview.addEventListener('click', previewSelectedReadiness);
+    ['products-feed-status', 'products-workflow-status', 'products-gap-filter'].forEach(function (id) {
+      var filter = document.getElementById(id);
+      if (filter) filter.addEventListener('change', loadDashboardData);
+    });
     var ordersStatus = document.getElementById('orders-status-filter');
     if (ordersStatus) ordersStatus.addEventListener('change', loadOrdersData);
     var regenerate = document.getElementById('regenerate-feed');
@@ -1434,13 +1547,14 @@ td b.danger { background: #ffe8ea; color: var(--red); }
   font: inherit;
   background: #fff;
 }
-.bulk-row { height: 42px; display: flex; align-items: center; gap: 14px; padding: 0 18px; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; color: #475569; font-size: 12px; }
+.bulk-row { min-height: 42px; display: flex; align-items: center; gap: 14px; padding: 8px 18px; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; color: #475569; font-size: 12px; flex-wrap: wrap; }
+#bulk-readiness-summary { color: #334155; font-weight: 750; }
 .table-scroll { overflow-x: auto; }
 .dashboard-table { width: 100%; border-collapse: collapse; min-width: 820px; }
 .dashboard-table th, .dashboard-table td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; text-align: left; vertical-align: middle; }
 .dashboard-table th { color: #64748b; background: #f8fafc; font-size: 11px; font-weight: 900; }
 .product-cell { display: flex; align-items: center; gap: 10px; min-width: 240px; }
-.product-cell p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+.product-cell p, .table-subtext { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
 .product-thumb { width: 34px; height: 34px; border-radius: 3px; background: #e5edf2; border: 1px solid #d9e0e7; object-fit: cover; flex: 0 0 auto; }
 .product-thumb.large { width: 54px; height: 54px; }
 .table-action { border: 0; background: transparent; color: #334155; font-size: 22px; font-weight: 900; cursor: pointer; }
@@ -1458,6 +1572,10 @@ td b.danger { background: #ffe8ea; color: var(--red); }
 .check-row { display: flex !important; flex-direction: row; align-items: center; justify-content: space-between; color: var(--ink) !important; }
 .check-row input { width: 22px; height: 22px; }
 .listing-gaps { display: flex; flex-wrap: wrap; gap: 8px; }
+.workflow-panel, .catalog-preview { border: 1px solid #d9e0e7; border-radius: 4px; padding: 12px; margin-bottom: 12px; background: #f8fafc; }
+.operations-timeline { margin-top: 16px; }
+.workflow-panel strong, .catalog-preview strong { display: block; margin-bottom: 4px; }
+.workflow-panel p, .catalog-preview p { margin: 4px 0; color: #64748b; font-size: 12px; }
 .dashboard-notice { border: 1px solid #f59f00; background: #fffbeb; color: #92400e; border-radius: 8px; padding: 12px; }
 .admin-panel { padding-bottom: 16px; }
 .dashboard-products[hidden], .admin-panel[hidden] { display: none !important; }

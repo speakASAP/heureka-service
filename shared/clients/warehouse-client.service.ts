@@ -3,6 +3,14 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { LoggerService } from '../logger/logger.service';
 
+export interface WarehouseAvailability {
+  productId: string;
+  totalQuantity?: number;
+  totalReserved?: number;
+  totalAvailable?: number;
+  warehouses?: any[];
+}
+
 /**
  * API client for warehouse-microservice
  * Fetches stock levels and manages stock reservations
@@ -66,6 +74,33 @@ export class WarehouseClientService {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.warn(`Failed to get total stock for product ${productId}: ${errorMessage}`, 'WarehouseClient');
       return 0;
+    }
+  }
+
+  /**
+   * Get availability for a product list in one Warehouse-authoritative request.
+   */
+  async getAvailabilityBatch(productIds: string[], warehouseIds?: string[]): Promise<WarehouseAvailability[]> {
+    const normalizedProductIds = Array.from(new Set(
+      (productIds || []).map((productId) => String(productId || '').trim()).filter(Boolean),
+    ));
+    if (!normalizedProductIds.length) return [];
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(`${this.baseUrl}/api/stock/availability/batch`, {
+          productIds: normalizedProductIds,
+          ...(warehouseIds?.length ? { warehouseIds } : {}),
+        }, this.requestOptions())
+      );
+      const data = response.data?.data;
+      if (Array.isArray(data)) return data;
+      if (Array.isArray(data?.items)) return data.items;
+      return [];
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.warn(`Failed to get batch stock availability for ${normalizedProductIds.length} products: ${errorMessage}`, 'WarehouseClient');
+      return [];
     }
   }
 
@@ -135,4 +170,3 @@ export class WarehouseClientService {
     }
   }
 }
-

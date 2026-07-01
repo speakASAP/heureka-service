@@ -24,7 +24,7 @@ export class CatalogClientService {
   async getProductById(productId: string): Promise<any> {
     try {
       const response = await firstValueFrom(
-        this.httpService.get(`${this.baseUrl}/api/products/${productId}`)
+        this.httpService.get(`${this.baseUrl}/api/products/${encodeURIComponent(productId)}`, this.catalogRequestOptions())
       );
       return response.data.data;
     } catch (error: unknown) {
@@ -41,7 +41,7 @@ export class CatalogClientService {
   async getProductBySku(sku: string): Promise<any> {
     try {
       const response = await firstValueFrom(
-        this.httpService.get(`${this.baseUrl}/api/products/sku/${sku}`)
+        this.httpService.get(`${this.baseUrl}/api/products/sku/${encodeURIComponent(sku)}`, this.catalogRequestOptions())
       );
       if (!response.data.success || !response.data.data) {
         return null;
@@ -73,7 +73,7 @@ export class CatalogClientService {
       if (query.limit) params.append('limit', String(query.limit));
 
       const response = await firstValueFrom(
-        this.httpService.get(`${this.baseUrl}/api/products?${params.toString()}`)
+        this.httpService.get(`${this.baseUrl}/api/products?${params.toString()}`, this.catalogRequestOptions())
       );
       return {
         items: response.data.data || [],
@@ -95,7 +95,7 @@ export class CatalogClientService {
   async createProduct(productData: any): Promise<any> {
     try {
       const response = await firstValueFrom(
-        this.httpService.post(`${this.baseUrl}/api/products`, productData)
+        this.httpService.post(`${this.baseUrl}/api/products`, productData, this.catalogRequestOptions())
       );
       return response.data.data;
     } catch (error: unknown) {
@@ -112,7 +112,7 @@ export class CatalogClientService {
   async updateProduct(productId: string, productData: any): Promise<any> {
     try {
       const response = await firstValueFrom(
-        this.httpService.put(`${this.baseUrl}/api/products/${productId}`, productData)
+        this.httpService.put(`${this.baseUrl}/api/products/${encodeURIComponent(productId)}`, productData, this.catalogRequestOptions())
       );
       return response.data.data;
     } catch (error: unknown) {
@@ -129,7 +129,7 @@ export class CatalogClientService {
   async getProductPricing(productId: string): Promise<any> {
     try {
       const response = await firstValueFrom(
-        this.httpService.get(`${this.baseUrl}/api/pricing/product/${productId}/current`)
+        this.httpService.get(`${this.baseUrl}/api/pricing/product/${encodeURIComponent(productId)}/current`, this.catalogRequestOptions())
       );
       return response.data.data;
     } catch (error: unknown) {
@@ -144,7 +144,7 @@ export class CatalogClientService {
   async getProductMedia(productId: string): Promise<any[]> {
     try {
       const response = await firstValueFrom(
-        this.httpService.get(`${this.baseUrl}/api/media/product/${productId}`)
+        this.httpService.get(`${this.baseUrl}/api/media/product/${encodeURIComponent(productId)}`, this.catalogRequestOptions())
       );
       return response.data.data || [];
     } catch (error: unknown) {
@@ -159,7 +159,7 @@ export class CatalogClientService {
   async getHeurekaFeedSnapshot(productId: string, feedType: string = 'heureka_cz'): Promise<any | null> {
     try {
       const response = await firstValueFrom(
-        this.httpService.get(`${this.baseUrl}/api/products/${productId}/heureka-feed-snapshot?feedType=${encodeURIComponent(feedType)}`)
+        this.httpService.get(`${this.baseUrl}/api/products/${encodeURIComponent(productId)}/heureka-feed-snapshot?feedType=${encodeURIComponent(feedType)}`, this.catalogRequestOptions())
       );
       return response.data?.data || null;
     } catch (error: unknown) {
@@ -226,6 +226,12 @@ export class CatalogClientService {
       this.logger.warn(`${label} update failed for product ${productId}: ${errorMessage}`, 'CatalogClient');
       return null;
     }
+  }
+
+
+  private catalogRequestOptions(): { headers: Record<string, string> } | undefined {
+    const headers = this.getCatalogInternalServiceHeaders();
+    return headers ? { headers } : undefined;
   }
 
   private getCatalogInternalServiceHeaders(): Record<string, string> | null {

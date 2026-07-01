@@ -73,6 +73,23 @@ Runtime implementation remains blocked until every required external owner appro
 
 All events must use synthetic examples in docs/tests and must exclude secrets, raw customer data, internal cost, margin, and supplier private values.
 
+## TASK-010 Operation Audit Schema Adapter
+
+Heureka defines the local non-emitting operation/audit adapter `heureka.operation.audit.v1` in
+`services/heureka-service/src/heureka/operations/operation-event.schema.ts`.
+
+The adapter maps append-only `heureka_operation_events` rows to:
+
+- a Heureka audit envelope with `event_name`, `event_version`, `occurred_at`,
+  `source_service`, `source_component`, `correlation_ref`, `idempotency_key`,
+  and `schema_ref`;
+- the current logging-microservice DTO shape with `level`, `message`, `service`,
+  `timestamp`, optional `correlation_id`, and redacted `metadata`.
+
+This contract does not approve runtime emission to logging-microservice. Runtime
+emission remains blocked until an ecosystem-wide operation/audit schema package
+and fail-soft logging client behavior are approved across channels.
+
 ## Operations Evidence
 
 TASK-008 operations trust and scale planning evidence lives in `OPS-TASK-008-operations-trust-and-scale.md`. Alert and dashboard payloads must use aggregate counts, timing, status, age, redacted error classes, and synthetic examples only. Runtime probes remain conditional until TASK-002 publishes the lifecycle/status endpoint shape.

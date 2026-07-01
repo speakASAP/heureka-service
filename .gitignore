@@ -36,6 +36,8 @@ Thumbs.db
 
 # Prisma
 prisma/migrations/
+!prisma/migrations/
+!prisma/migrations/**
 
 # Docker
 docker-compose.override.yml

@@ -12,6 +12,17 @@ import { LoggerService } from '@heureka/shared';
 import { Agent as HttpAgent } from 'http';
 import { Agent as HttpsAgent } from 'https';
 
+export function isHeurekaServiceBackendPath(fullPath: string): boolean {
+  const pathOnly = String(fullPath || '').split('?')[0];
+  const heurekaOwnedPrefixes = [
+    '/heureka/feed',
+    '/heureka/dashboard',
+    '/heureka/products',
+    '/heureka/health',
+  ];
+  return heurekaOwnedPrefixes.some((prefix) => pathOnly === prefix || pathOnly.startsWith(`${prefix}/`));
+}
+
 @Injectable()
 export class GatewayService implements OnModuleInit {
   private readonly logger = new Logger(GatewayService.name);
@@ -254,21 +265,31 @@ export class GatewayService implements OnModuleInit {
       return '';
     };
 
-    this.serviceUrls = {
+    const serviceUrls: Record<string, string> = {
       heureka: getServiceUrl('HEUREKA_SERVICE_URL', 'HEUREKA_SERVICE_PORT', 'heureka'),
       aukro: getServiceUrl('AUKRO_SERVICE_URL', 'AUKRO_SERVICE_PORT', 'aukro'),
-      import: getServiceUrl('IMPORT_SERVICE_URL', 'IMPORT_SERVICE_PORT', 'import'),
-      settings: getServiceUrl('SETTINGS_SERVICE_URL', 'HEUREKA_SETTINGS_SERVICE_PORT', 'settings'),
       // In development, use localhost (via SSH tunnel) if AUTH_SERVICE_PORT is set or AUTH_SERVICE_URL is localhost
       // Otherwise fallback to AUTH_SERVICE_URL (HTTPS for production)
-      auth: isDevelopment 
-        ? (this.configService.get<string>('AUTH_SERVICE_PORT') 
+      auth: isDevelopment
+        ? (this.configService.get<string>('AUTH_SERVICE_PORT')
             ? `http://localhost:${this.configService.get<string>('AUTH_SERVICE_PORT')}`
             : (this.configService.get<string>('AUTH_SERVICE_URL')?.startsWith('http://localhost')
                 ? this.configService.get<string>('AUTH_SERVICE_URL')
                 : (this.configService.get<string>('AUTH_SERVICE_URL') || this.throwConfigError('AUTH_SERVICE_URL'))))
         : (this.configService.get<string>('AUTH_SERVICE_URL') || this.throwConfigError('AUTH_SERVICE_URL')),
     };
+
+    const optionalImportUrl = getServiceUrl('IMPORT_SERVICE_URL', 'IMPORT_SERVICE_PORT');
+    if (optionalImportUrl) {
+      serviceUrls.import = optionalImportUrl;
+    }
+
+    const optionalSettingsUrl = getServiceUrl('SETTINGS_SERVICE_URL', 'HEUREKA_SETTINGS_SERVICE_PORT');
+    if (optionalSettingsUrl) {
+      serviceUrls.settings = optionalSettingsUrl;
+    }
+
+    this.serviceUrls = serviceUrls;
 
     // Log all service URLs at startup
     this.sharedLogger.info('API Gateway initialized with service URLs', {
@@ -340,11 +361,10 @@ export class GatewayService implements OnModuleInit {
   }
 
   /**
-   * Paths served by the heureka-feed microservice (XML feed). All other /heureka/* API traffic goes to aukro-service.
+   * Paths owned by heureka-service. Unknown legacy /heureka/* API paths remain routed through the Aukro compatibility fallback.
    */
-  isHeurekaFeedBackendPath(fullPath: string): boolean {
-    const pathOnly = fullPath.split('?')[0];
-    return pathOnly === '/heureka/feed' || pathOnly.startsWith('/heureka/feed/');
+  isHeurekaServiceBackendPath(fullPath: string): boolean {
+    return isHeurekaServiceBackendPath(fullPath);
   }
 
   /**
@@ -574,10 +594,8 @@ export class GatewayService implements OnModuleInit {
         baseUrl,
         hasBody: !!body,
         bodySize: body ? JSON.stringify(body).length : 0,
-        bodyContent: body ? JSON.stringify(body, null, 2) : null,
         bodyKeys: body && typeof body === 'object' ? Object.keys(body) : [],
         offerIdsCount: body?.offerIds?.length || 0,
-        offerIds: body?.offerIds || [],
         headers: Object.keys(headers || {}),
         authorizationHeader: headers?.Authorization ? 'present' : 'missing',
         timeout: config.timeout,
@@ -665,15 +683,13 @@ export class GatewayService implements OnModuleInit {
       const promiseCreationTime = Date.now();
       let axiosPromise;
       
-      // Log body details before making request
-      const bodyStr = body ? (typeof body === 'object' ? JSON.stringify(body) : String(body)) : 'undefined';
+      const bodySize = body ? JSON.stringify(body).length : 0;
       console.log(`[${new Date().toISOString()}] [TIMING] GatewayService: About to make ${method} request`, {
         requestId,
         url,
         hasBody: !!body,
         bodyType: typeof body,
-        bodyLength: bodyStr.length,
-        bodyPreview: bodyStr.substring(0, 200),
+        bodySize,
       });
 
       switch (method.toUpperCase()) {
@@ -812,7 +828,6 @@ export class GatewayService implements OnModuleInit {
           total: responseData?.data?.total,
           successful: responseData?.data?.successful,
           failed: responseData?.data?.failed,
-          responsePreview: responseData ? JSON.stringify(responseData, null, 2).substring(0, 2000) : null,
           timestamp: new Date().toISOString(),
           step: 'GATEWAY_FORWARD_COMPLETE',
         });
@@ -854,7 +869,12 @@ export class GatewayService implements OnModuleInit {
         };
       }
 
-      return response.data;
+      return {
+        _isGatewayResponse: true,
+        _gatewayStatus: response.status,
+        data: response.data,
+        headers: response.headers,
+      };
     } catch (error: any) {
       const axiosCallDuration = Date.now() - axiosCallStartTime;
       const duration = Date.now() - startTime;
@@ -936,7 +956,7 @@ export class GatewayService implements OnModuleInit {
         configTimeout: error.config?.timeout,
         configHeaders: error.config?.headers ? Object.keys(error.config.headers) : [],
         timestamp: new Date().toISOString(),
-        requestBody: body ? (typeof body === 'object' ? JSON.stringify(body, null, 2).substring(0, 1000) : String(body).substring(0, 1000)) : null,
+        requestBodyKeys: body && typeof body === 'object' ? Object.keys(body) : [],
       };
 
       this.sharedLogger.error(`[${requestId}] Error forwarding request to ${serviceName}`, errorDetails);

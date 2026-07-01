@@ -24,12 +24,18 @@ export class DashboardController {
     @Query('page') page = '1',
     @Query('limit') limit = '20',
     @Query('feedType') feedType = 'heureka_cz',
+    @Query('feedStatus') feedStatus?: string,
+    @Query('workflowStatus') workflowStatus?: string,
+    @Query('gap') gap?: string,
   ) {
     const result = await this.dashboardService.listProducts(req.user, {
       search,
       page: Number(page),
       limit: Number(limit),
       feedType,
+      feedStatus,
+      workflowStatus,
+      gap,
     });
     return { success: true, data: result };
   }

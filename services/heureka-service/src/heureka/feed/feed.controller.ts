@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Param, Post, Query, Res, HttpStatus } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Res, HttpStatus, UseGuards } from '@nestjs/common';
 import { Response } from 'express';
 import { FeedService } from './feed.service';
+import { HeurekaFeedMutationGuard } from './feed-mutation.guard';
 
 @Controller('feed')
 export class FeedController {
@@ -38,6 +39,7 @@ export class FeedController {
   }
 
   @Post('regenerate')
+  @UseGuards(HeurekaFeedMutationGuard)
   async regenerateFeed(@Query('type') type: string = 'heureka_cz') {
     const result = await this.feedService.regenerateFeedWithLifecycle(type);
     return { success: true, message: 'Feed regenerated successfully', feedLength: result.xml.length, validation: result.validation };

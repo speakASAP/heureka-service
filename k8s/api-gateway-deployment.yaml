@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: heureka-api-gateway
+  namespace: statex-apps
+  labels:
+    app: heureka-api-gateway
+    managed-by: k8s-migration
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: heureka-api-gateway
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: heureka-api-gateway
+    spec:
+      containers:
+        - name: app
+          image: localhost:5000/heureka-api-gateway:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3801
+          envFrom:
+            - configMapRef:
+                name: heureka-config
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database-credentials
+                  key: DB_PASSWORD
+            - name: NODE_ENV
+              value: "production"
+            - name: API_GATEWAY_PORT
+              value: "3801"
+            - name: HEUREKA_SERVICE_URL
+              value: "http://heureka-service:3800"
+            - name: AUKRO_SERVICE_URL
+              value: "http://aukro-service:3700"
+            - name: AUTH_SERVICE_URL
+              value: "http://auth-microservice:3370"
+            - name: LOGGING_SERVICE_URL
+              value: "http://logging-microservice:3367"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: auth-microservice-secret
+                  key: JWT_SECRET
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: 3801
+            failureThreshold: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3801
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3801
+            periodSeconds: 30
+            failureThreshold: 3
+            timeoutSeconds: 5
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"

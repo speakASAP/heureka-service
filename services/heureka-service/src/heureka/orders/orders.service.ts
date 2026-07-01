@@ -1,5 +1,6 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { CatalogClientService, LoggerService, OrderClientService, PrismaService, WarehouseClientService } from '@heureka/shared';
+import { HeurekaOperationEventService } from '../operations/operation-event.service';
 
 const CHANNEL = 'heureka';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -12,6 +13,7 @@ export class HeurekaOrdersService {
     private readonly catalogClient: CatalogClientService,
     private readonly warehouseClient: WarehouseClientService,
     private readonly logger: LoggerService,
+    @Optional() private readonly operationEvents?: HeurekaOperationEventService,
   ) {
     this.logger.setContext('HeurekaOrdersService');
   }
@@ -24,6 +26,15 @@ export class HeurekaOrdersService {
       orderBy: { createdAt: 'desc' },
     });
     if (existing?.forwarded && existing.orderId) {
+      await this.operationEvents?.append({
+        action: 'order_forward_replayed',
+        entityType: 'orders_service',
+        entityId: existing.id,
+        status: existing.status || request.status,
+        externalId: request.externalOrderId,
+        errorSummary: `Heureka order replayed with existing central order`,
+        responseSummary: { centralOrderId: existing.orderId, itemCount: request.items.length },
+      });
       return this.toResponse(existing, { forwarded: true, orderId: existing.orderId, replay: true, itemCount: request.items.length });
     }
 
@@ -39,6 +50,19 @@ export class HeurekaOrdersService {
         forwarded: false,
       },
     });
+
+    if (!existing) {
+      await this.operationEvents?.append({
+        action: 'order_received',
+        entityType: 'orders_service',
+        entityId: localOrder.id,
+        status: request.status,
+        externalId: request.externalOrderId,
+        errorSummary: `Heureka order received`,
+        accountId: account.id,
+        requestSummary: { itemCount: request.items.length, total: request.totals.total, currency: request.totals.currency },
+      });
+    }
 
     const centralOrder = await this.orderClient.createOrder({
       channel: CHANNEL,
@@ -73,6 +97,16 @@ export class HeurekaOrdersService {
       heurekaOrderId: request.externalOrderId,
       centralOrderId: centralOrder.id,
       itemCount: request.items.length,
+    });
+    await this.operationEvents?.append({
+      action: 'order_forwarded',
+      entityType: 'orders_service',
+      entityId: updated.id,
+      status: updated.status,
+      externalId: request.externalOrderId,
+      errorSummary: `Heureka order forwarded to orders-microservice`,
+      accountId: account.id,
+      responseSummary: { centralOrderId: centralOrder.id, itemCount: request.items.length, total: request.totals.total, currency: request.totals.currency },
     });
     return this.toResponse(updated, { forwarded: true, orderId: centralOrder.id, replay: false, itemCount: request.items.length });
   }

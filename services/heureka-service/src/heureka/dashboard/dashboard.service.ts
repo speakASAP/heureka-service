@@ -1,8 +1,10 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { CatalogClientService, LoggerService, PrismaService, WarehouseClientService } from '@heureka/shared';
+import { buildHeurekaOperationAuditReadModel, ECOSYSTEM_OPERATION_AUDIT_SCHEMA_BLOCKER } from '../operations/operation-event.schema';
 import { FeedService } from '../feed/feed.service';
+import { HeurekaOperationEventService } from '../operations/operation-event.service';
 
 type DashboardUser = {
   id: string;
@@ -17,6 +19,9 @@ type ProductListQuery = {
   page?: number;
   limit?: number;
   feedType?: string;
+  feedStatus?: string;
+  workflowStatus?: string;
+  gap?: string;
 };
 
 type CatalogMarketplaceProfileClient = CatalogClientService & {
@@ -43,6 +48,7 @@ export class DashboardService {
     private readonly feedService: FeedService,
     private readonly httpService: HttpService,
     private readonly logger: LoggerService,
+    @Optional() private readonly operationEvents?: HeurekaOperationEventService,
   ) {
     this.logger.setContext('HeurekaDashboardService');
   }
@@ -97,6 +103,9 @@ export class DashboardService {
     const limit = this.clampNumber(query.limit, 20, 1, 50);
     const search = String(query.search || '').trim().slice(0, 120);
     const feedType = query.feedType || 'heureka_cz';
+    const feedStatus = this.optionalString(query.feedStatus);
+    const workflowStatus = this.optionalString(query.workflowStatus);
+    const gap = this.optionalString(query.gap);
     const catalog = await this.catalogClient.searchProducts({ search, isActive: true, page, limit });
     const items = Array.isArray(catalog.items) ? catalog.items : [];
     const productIds = items.map((product) => this.getCatalogProductId(product)).filter(Boolean);
@@ -118,32 +127,45 @@ export class DashboardService {
       }
     });
 
+    const stockByProductId = await this.buildStockAvailabilityLookup(productIds);
     const products = await Promise.all(items.map(async (product) => {
       const productId = this.getCatalogProductId(product);
-      const [stock, pricing, media] = productId
+      const [pricing, media, marketplaceFields] = productId
         ? await Promise.all([
-            this.warehouseClient.getTotalAvailable(productId),
             this.catalogClient.getProductPricing(productId),
             this.catalogClient.getProductMedia(productId),
+            this.getHeurekaMarketplaceFields(productId),
           ])
-        : [0, null, []];
+        : [null, [], null];
       return this.buildDashboardProduct(product, {
         feedType,
         includedRow: productId ? includedByProduct.get(productId) : null,
         offer: productId ? offerByProduct.get(productId) : null,
-        stock,
+        stock: productId ? this.stockFromLookup(stockByProductId, productId) : 0,
         pricing,
         media,
+        marketplaceFields,
       });
     }));
 
+    const filteredProducts = this.filterDashboardProducts(products, { feedStatus, workflowStatus, gap });
+
     return {
       feedType,
-      products,
+      products: filteredProducts,
+      filters: {
+        search,
+        feedStatus,
+        workflowStatus,
+        gap,
+        pageSize: products.length,
+        returned: filteredProducts.length,
+      },
       pagination: {
         total: catalog.total,
         page: catalog.page,
         limit: catalog.limit,
+        filtered: filteredProducts.length,
       },
     };
   }
@@ -221,9 +243,20 @@ export class DashboardService {
 
     this.logger.log('Heureka listing updated from dashboard', {
       actorId: actor.id,
-      actorEmail: actor.email,
       productId,
       offerId: offer.id,
+    });
+    await this.operationEvents?.append({
+      feedType: 'heureka_cz',
+      action: existing ? 'listing_updated' : 'listing_created',
+      entityType: 'dashboard',
+      entityId: offer.id,
+      status: isActive ? 'active' : 'inactive',
+      actorId: actor.id,
+      summary: `Dashboard ${existing ? 'updated' : 'created'} Heureka listing`,
+      productId,
+      requestSummary: { title, price, stockQuantity, includeInFeed: body.includeInFeed ?? null },
+      responseSummary: { offerId: offer.id },
     });
 
     return this.getProductDetail(actor, productId);
@@ -240,7 +273,6 @@ export class DashboardService {
       : await this.feedService.excludeProductFromFeed(productId, 'heureka_cz', { requestedBy: actor.email });
     this.logger.log('Heureka feed inclusion changed from dashboard', {
       actorId: actor.id,
-      actorEmail: actor.email,
       productId,
       include,
     });
@@ -258,10 +290,20 @@ export class DashboardService {
     const result = await this.feedService.regenerateFeedWithLifecycle(feedType);
     this.logger.log('Heureka feed regenerated from dashboard', {
       actorId: actor.id,
-      actorEmail: actor.email,
       feedType,
       generationMs: result.validation.generationMs,
       status: result.validation.status,
+    });
+    await this.operationEvents?.append({
+      feedType,
+      action: 'feed_regenerate_requested',
+      entityType: 'dashboard',
+      entityId: result.validation.feedId || null,
+      status: result.validation.status,
+      actorId: actor.id,
+      summary: `Dashboard regenerated ${feedType} feed with status ${result.validation.status}`,
+      requestSummary: { feedType },
+      responseSummary: { generationMs: result.validation.generationMs, productCount: result.validation.includedProductCount },
     });
     return {
       feedType,
@@ -342,9 +384,18 @@ export class DashboardService {
     const settings = await this.prisma.heurekaSettings.update({ where: { feedType }, data });
     this.logger.log('Heureka feed settings updated from dashboard', {
       actorId: actor.id,
-      actorEmail: actor.email,
       feedType,
       changedFields: Object.keys(data),
+    });
+    await this.operationEvents?.append({
+      feedType,
+      action: 'settings_updated',
+      entityType: 'dashboard',
+      entityId: settings.id,
+      status: settings.isActive ? 'active' : 'inactive',
+      actorId: actor.id,
+      summary: `Dashboard updated ${feedType} feed settings`,
+      requestSummary: { changedFields: Object.keys(data) },
     });
     return {
       feedType,
@@ -381,15 +432,33 @@ export class DashboardService {
 
   async getOperationsHistory(user: DashboardUser, feedType = 'heureka_cz') {
     this.normalizeUser(user);
-    const [feedHistory, orders] = await Promise.all([
+    const [feedHistory, orders, offers, products, settings, operationEventLog] = await Promise.all([
       this.prisma.heurekaFeed.findMany({ where: { feedType }, orderBy: { createdAt: 'desc' }, take: 25 }),
       this.prisma.heurekaOrder.findMany({ orderBy: { createdAt: 'desc' }, take: 25 }),
+      this.prisma.heurekaOffer.findMany({ orderBy: { updatedAt: 'desc' }, take: 25 }),
+      this.prisma.heurekaProduct.findMany({ orderBy: { updatedAt: 'desc' }, take: 25 }),
+      this.prisma.heurekaSettings.findMany({ orderBy: { updatedAt: 'desc' }, take: 10 }).catch(() => []),
+      this.operationEvents?.list(feedType, 50) || Promise.resolve({ events: [], missing: ['[MISSING: durable operation/audit log contract]', '[MISSING: Heureka typed operation event writer]'], readModel: buildHeurekaOperationAuditReadModel([], 50) }),
     ]);
+    const operationEvents = [
+      ...operationEventLog.events,
+      ...this.buildOperationEvents({ feedHistory, orders, offers, products, settings }),
+    ]
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 50);
     return {
       feedType,
       feeds: feedHistory.map((feed) => this.serializeFeed(feed)),
       orders: orders.map((order) => this.serializeOrder(order)),
-      missing: ['[MISSING: operation/audit log contract]'],
+      offers: offers.map((offer) => this.serializeOfferEventSource(offer)),
+      products: products.map((product) => this.serializeFeedProductEventSource(product)),
+      settings: settings.map((item) => this.serializeSettings(item)),
+      operationEvents,
+      operationEventLog: operationEventLog.readModel,
+      missing: [
+        ...operationEventLog.missing,
+        ECOSYSTEM_OPERATION_AUDIT_SCHEMA_BLOCKER,
+      ],
     };
   }
 
@@ -420,8 +489,7 @@ export class DashboardService {
     const localStats = await this.getLocalUsageStats();
     this.logger.log('Heureka admin users viewed', {
       actorId: actor.id,
-      actorEmail: actor.email,
-      authUsersAvailable: authUsers.available,
+            authUsersAvailable: authUsers.available,
       count: authUsers.count || 0,
     });
     return {
@@ -495,6 +563,118 @@ export class DashboardService {
     }
   }
 
+  private buildOperationEvents(input: { feedHistory: any[]; orders: any[]; offers: any[]; products: any[]; settings: any[] }) {
+    const events = [
+      ...(input.feedHistory || []).map((feed) => this.operationEvent({
+        action: 'feed_generation',
+        source: 'heureka_feeds',
+        entityId: feed.id,
+        status: feed.status,
+        timestamp: feed.generatedAt || feed.updatedAt || feed.createdAt,
+        summary: `${feed.feedType || 'heureka'} feed ${feed.status || 'updated'} with ${feed.productCount || 0} products`,
+        metadata: {
+          feedType: feed.feedType,
+          productCount: feed.productCount,
+          feedUrl: feed.feedUrl,
+        },
+      })),
+      ...(input.orders || []).map((order) => this.operationEvent({
+        action: order.forwarded ? 'order_forwarded' : 'order_received',
+        source: 'heureka_orders',
+        entityId: order.id,
+        status: order.status,
+        timestamp: order.updatedAt || order.createdAt,
+        summary: `Heureka order ${order.heurekaOrderId || order.id} is ${order.status || 'unknown'}`,
+        metadata: {
+          externalOrderId: order.heurekaOrderId || null,
+          centralOrderId: order.orderId || null,
+          forwarded: Boolean(order.forwarded),
+          total: this.toNumber(order.total) ?? 0,
+          currency: order.currency,
+        },
+      })),
+      ...(input.offers || []).map((offer) => this.operationEvent({
+        action: offer.isActive === false ? 'listing_inactive' : 'listing_updated',
+        source: 'heureka_offers',
+        entityId: offer.id,
+        status: offer.isActive === false ? 'inactive' : 'active',
+        timestamp: offer.updatedAt || offer.createdAt,
+        summary: `Heureka listing ${offer.title || offer.productId || offer.id} is ${offer.isActive === false ? 'inactive' : 'active'}`,
+        metadata: {
+          productId: offer.productId || null,
+          stockQuantity: offer.stockQuantity,
+          price: this.toNumber(offer.price),
+        },
+      })),
+      ...(input.products || []).map((product) => this.operationEvent({
+        action: product.isIncluded ? 'feed_product_included' : 'feed_product_excluded',
+        source: 'heureka_products',
+        entityId: product.id,
+        status: product.isIncluded ? 'included' : 'excluded',
+        timestamp: product.updatedAt || product.createdAt,
+        summary: `Catalog product ${product.productId} is ${product.isIncluded ? 'included in' : 'excluded from'} Heureka feed`,
+        metadata: {
+          productId: product.productId,
+          isIncluded: Boolean(product.isIncluded),
+        },
+      })),
+      ...(input.settings || []).map((settings) => this.operationEvent({
+        action: settings.isActive ? 'settings_active' : 'settings_inactive',
+        source: 'heureka_settings',
+        entityId: settings.id,
+        status: settings.isActive ? 'active' : 'inactive',
+        timestamp: settings.updatedAt || settings.createdAt,
+        summary: `Feed settings ${settings.feedType || settings.id} are ${settings.isActive ? 'active' : 'inactive'}`,
+        metadata: {
+          feedType: settings.feedType,
+          shopName: settings.shopName,
+          currency: settings.currency,
+        },
+      })),
+    ].filter((event) => event.timestamp);
+
+    return events
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 50);
+  }
+
+  private operationEvent(input: { action: string; source: string; entityId: string; status?: string | null; timestamp: any; summary: string; metadata?: Record<string, unknown> }) {
+    return {
+      eventType: input.action,
+      action: input.action,
+      source: input.source,
+      entityId: input.entityId,
+      status: input.status || 'unknown',
+      timestamp: input.timestamp,
+      summary: input.summary,
+      metadata: input.metadata || {},
+      durability: 'derived_from_existing_row',
+    };
+  }
+
+  private serializeOfferEventSource(offer: any) {
+    return {
+      id: offer.id,
+      productId: offer.productId,
+      title: offer.title,
+      price: this.toNumber(offer.price),
+      stockQuantity: offer.stockQuantity,
+      isActive: Boolean(offer.isActive),
+      createdAt: offer.createdAt,
+      updatedAt: offer.updatedAt,
+    };
+  }
+
+  private serializeFeedProductEventSource(product: any) {
+    return {
+      id: product.id,
+      productId: product.productId,
+      isIncluded: Boolean(product.isIncluded),
+      createdAt: product.createdAt,
+      updatedAt: product.updatedAt,
+    };
+  }
+
   private async getLocalUsageStats() {
     const [products, includedProducts, offers, activeOffers, orders, feeds, latestFeed] = await Promise.all([
       this.prisma.heurekaProduct.count(),
@@ -516,6 +696,51 @@ export class DashboardService {
     };
   }
 
+  private filterDashboardProducts(products: any[], filters: { feedStatus?: string | null; workflowStatus?: string | null; gap?: string | null }) {
+    return products.filter((product) => {
+      if (filters.feedStatus && filters.feedStatus !== 'all' && product.feedStatus !== filters.feedStatus) {
+        return false;
+      }
+      if (
+        filters.workflowStatus &&
+        filters.workflowStatus !== 'all' &&
+        product.workflowStatus !== filters.workflowStatus &&
+        product.heurekaStatus !== filters.workflowStatus
+      ) {
+        return false;
+      }
+      if (filters.gap && filters.gap !== 'all') {
+        if (filters.gap === 'has_category') return !product.gaps?.includes('category');
+        if (filters.gap === 'missing_category') return product.gaps?.includes('category');
+        return product.gaps?.includes(filters.gap);
+      }
+      return true;
+    });
+  }
+
+  private async buildStockAvailabilityLookup(productIds: string[]): Promise<Map<string, number | null>> {
+    const normalizedProductIds = Array.from(new Set(
+      productIds.map((productId) => String(productId || '').trim()).filter(Boolean),
+    ));
+    if (!normalizedProductIds.length) return new Map();
+
+    const availabilityRows = await this.warehouseClient.getAvailabilityBatch(normalizedProductIds);
+    const lookup = new Map<string, number | null>();
+    for (const row of availabilityRows || []) {
+      const productId = String(row?.productId || '').trim();
+      if (!productId) continue;
+      const totalAvailable = Number(row?.totalAvailable);
+      lookup.set(productId, Number.isFinite(totalAvailable) ? totalAvailable : null);
+    }
+    return lookup;
+  }
+
+  private stockFromLookup(stockByProductId: Map<string, number | null>, productId: string): number {
+    if (!stockByProductId.has(productId)) return 0;
+    const stock = stockByProductId.get(productId);
+    return Number.isFinite(Number(stock)) ? Number(stock) : 0;
+  }
+
   private buildDashboardProduct(product: any, context: any) {
     const productId = this.getCatalogProductId(product);
     const pricing = context.pricing || {};
@@ -523,13 +748,20 @@ export class DashboardService {
     const media = this.normalizeMedia(context.media || []);
     const stock = Number(context.stock || 0);
     const price = this.toNumber(offer?.price ?? pricing.priceVat ?? pricing.priceWithVat ?? pricing.basePrice ?? pricing.price);
-    const name = offer?.title || product.title || product.name || product.productName || 'Untitled product';
-    const gaps = this.getProductGaps(product, pricing, media, stock);
+    const marketplaceOverrides = this.resolveMarketplaceOverrides(context.marketplaceFields);
+    const category = marketplaceOverrides.categoryText || product.categoryText || product.categoryPath || product.categoryName || product.category || null;
+    const name = offer?.title || marketplaceOverrides.productName || product.title || product.name || product.productName || 'Untitled product';
+    const gaps = this.getProductGaps(product, pricing, media, stock, null, category);
     const quality = this.calculateQuality(gaps);
     const isIncluded = Boolean(context.includedRow?.isIncluded);
     const status = isIncluded
       ? (quality >= 80 && stock > 0 ? 'published' : 'needs_data')
       : 'not_published';
+    const workflow = this.buildProductWorkflowProjection({
+      gaps,
+      isIncluded,
+      hasOffer: Boolean(offer),
+    });
 
     return {
       id: productId,
@@ -537,7 +769,7 @@ export class DashboardService {
       ean: product.ean || product.barcode || null,
       name,
       brand: product.brand || product.manufacturer || null,
-      category: product.categoryText || product.categoryPath || product.categoryName || product.category || null,
+      category,
       primaryImageUrl: media[0]?.url || null,
       price,
       availableStock: stock,
@@ -545,11 +777,83 @@ export class DashboardService {
       isIncluded,
       heurekaStatus: status,
       feedStatus: isIncluded ? 'included' : 'excluded',
+      workflowStatus: workflow.workflowStatus,
+      nextAction: workflow.nextAction,
+      blockers: workflow.blockers,
+      listingEditable: workflow.listingEditable,
+      canIncludeInFeed: workflow.canIncludeInFeed,
+      canConfirmPublish: workflow.canConfirmPublish,
       dataQuality: quality,
       gaps,
       offerId: offer?.id || null,
+      catalogMarketplaceProfile: context.catalogMarketplaceProfile || this.buildCatalogMarketplaceProfile(null, context.marketplaceFields),
       updatedAt: offer?.updatedAt || context.includedRow?.updatedAt || product.updatedAt || null,
     };
+  }
+
+  private buildProductWorkflowProjection(context: { gaps: string[]; isIncluded: boolean; hasOffer: boolean }) {
+    const blockers = (context.gaps || []).map((gap) => ({
+      code: String(gap || '').toUpperCase().replace(/[^A-Z0-9]+/g, '_'),
+      field: gap,
+      message: this.workflowBlockerMessage(gap),
+    }));
+
+    if (blockers.length) {
+      return {
+        workflowStatus: 'blocked',
+        nextAction: 'resolve_data_gaps',
+        blockers,
+        listingEditable: true,
+        canIncludeInFeed: false,
+        canConfirmPublish: false,
+      };
+    }
+
+    if (context.isIncluded) {
+      return {
+        workflowStatus: 'included',
+        nextAction: 'monitor_feed',
+        blockers,
+        listingEditable: true,
+        canIncludeInFeed: false,
+        canConfirmPublish: false,
+      };
+    }
+
+    if (context.hasOffer) {
+      return {
+        workflowStatus: 'draft',
+        nextAction: 'include_in_feed',
+        blockers,
+        listingEditable: true,
+        canIncludeInFeed: true,
+        canConfirmPublish: true,
+      };
+    }
+
+    return {
+      workflowStatus: 'ready',
+      nextAction: 'edit_listing',
+      blockers,
+      listingEditable: true,
+      canIncludeInFeed: true,
+      canConfirmPublish: true,
+    };
+  }
+
+  private workflowBlockerMessage(gap: string) {
+    const labels: Record<string, string> = {
+      catalog_product_id: 'Catalog product identifier is missing.',
+      product_name: 'Product name is missing.',
+      description: 'Public product description is missing.',
+      ean: 'EAN is missing.',
+      manufacturer: 'Manufacturer or brand is missing.',
+      category: 'Heureka category mapping is missing.',
+      price: 'Price is missing.',
+      image: 'Primary product image is missing.',
+      stock: 'Warehouse stock is zero or unavailable.',
+    };
+    return labels[gap] || `Missing or invalid field: ${gap}`;
   }
 
   private async getHeurekaContentPreview(productId: string): Promise<any | null> {

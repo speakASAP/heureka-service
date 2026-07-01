@@ -1,6 +1,8 @@
 # Multi-stage build for API Gateway
 FROM node:24-slim AS builder
 
+RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy shared package and install dependencies first
@@ -40,7 +42,7 @@ RUN npm run build
 FROM node:24-slim
 
 # Install OpenSSL for Prisma query engine
-RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -55,10 +57,10 @@ COPY --from=builder /app/package*.json ./
 
 WORKDIR /app/services/api-gateway
 
-EXPOSE 3701
+EXPOSE 3801
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3701/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+  CMD node -e "require('http').get('http://localhost:3801/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
 CMD ["node", "dist/main.js"]
 

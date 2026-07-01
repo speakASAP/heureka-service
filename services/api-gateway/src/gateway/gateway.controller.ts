@@ -76,7 +76,7 @@ export class GatewayController {
       this.sharedLogger.info(`[${requestId}] OAuth callback completed`, {
         duration: `${duration}ms`,
       });
-      return res.status(200).json(response);
+      return res.status(this.getForwardedStatus(response)).json(this.getForwardedBody(response));
     } catch (error: any) {
       const duration = Date.now() - startTime;
       this.sharedLogger.error(`[${requestId}] OAuth callback error`, {
@@ -95,14 +95,14 @@ export class GatewayController {
   }
 
   /**
-   * Route legacy /api/heureka/* paths: feed → heureka-feed service; API → aukro-service (/aukro/*).
+   * Route /api/heureka/* paths: known Heureka-owned APIs go to heureka-service; unknown legacy paths keep Aukro compatibility.
    */
   @All('heureka/*')
   @UseGuards(JwtAuthGuard)
   async heurekaRoute(@Req() req: ExpressRequest, @Res() res: ExpressResponse) {
     const path = req.url.replace('/api/heureka', '');
     const upstream = `/heureka${path}`;
-    const serviceName = this.gatewayService.isHeurekaFeedBackendPath(upstream) ? 'heureka' : 'aukro';
+    const serviceName = this.gatewayService.isHeurekaServiceBackendPath(upstream) ? 'heureka' : 'aukro';
     const backendPath =
       serviceName === 'aukro' ? upstream.replace(/^\/heureka/, '/aukro') : upstream;
     return this.routeRequest(serviceName, backendPath, req, res);
@@ -138,15 +138,25 @@ export class GatewayController {
   }
 
   /**
+   * Health check endpoint at /api/health
+   */
+  @Get('health')
+  async health(@Req() req: ExpressRequest, @Res() res: ExpressResponse) {
+    return res.json({
+      status: 'ok',
+      service: 'heureka-api-gateway',
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  /**
    * Route auth requests (no auth required for register/login)
    * Must be before catch-all to match correctly
    * Use explicit routes for common endpoints and catch-all for others
    */
   @All('auth/login')
   async authLogin(@Req() req: ExpressRequest, @Res() res: ExpressResponse) {
-    // Temporary debug: log incoming login payload to troubleshoot empty/invalid bodies in dev
-    this.logger.warn(`Auth login payload | url=${req.originalUrl}`, {
-      body: req.body,
+    this.logger.debug(`Auth login request | url=${req.originalUrl}`, {
       hasBody: !!req.body,
       contentType: req.headers['content-type'],
     });
@@ -254,7 +264,7 @@ export class GatewayController {
       hasAuth: !!req.headers.authorization,
       hasBody: !!body,
       bodyType: typeof body,
-      bodyValue: body ? (typeof body === 'object' ? JSON.stringify(body).substring(0, 200) : String(body).substring(0, 200)) : 'undefined',
+      bodyKeys: body && typeof body === 'object' ? Object.keys(body) : [],
       contentType: req.headers['content-type'],
     });
     this.logger.log(`[${requestId}] ${method} ${req.originalUrl} -> ${serviceName}${path}`);
@@ -274,18 +284,18 @@ export class GatewayController {
         serviceName,
         method,
         path,
-        statusCode: 200,
+        statusCode: this.getForwardedStatus(response),
         durationMs: duration,
       });
       this.sharedLogger.info(`[${requestId}] Request completed successfully`, {
         serviceName,
         method,
         path,
-        statusCode: 200,
+        statusCode: this.getForwardedStatus(response),
         duration: `${duration}ms`,
       });
       
-      res.status(200).json(response);
+      res.status(this.getForwardedStatus(response)).json(this.getForwardedBody(response));
     } catch (error: any) {
       const duration = Date.now() - startTime;
       const errorStatus = error.response?.status || error.status;
@@ -386,6 +396,19 @@ export class GatewayController {
         },
       });
     }
+  }
+
+
+  private getForwardedStatus(response: any): number {
+    const status = Number(response?._gatewayStatus || response?.status || 200);
+    return Number.isInteger(status) && status >= 100 && status <= 599 ? status : 200;
+  }
+
+  private getForwardedBody(response: any): any {
+    if (response && response._isGatewayResponse) {
+      return response.data;
+    }
+    return response;
   }
 
   /**
