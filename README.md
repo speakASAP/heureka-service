@@ -73,6 +73,7 @@ npm run verify:heureka-stock-readiness-live
 npm run verify:heureka-blocked-product-lanes
 npm run verify:heureka-external-readiness
 npm run verify:health-dependencies
+npm run verify:task-010-completion-audit
 NPM_CONFIG_CACHE=/tmp/heureka-npm-cache npm run verify:task-010-source-parity
 LOGGING_SERVICE_URL=http://logging-microservice:3367 npx ts-node --skip-ignore --compiler-options '{"types":["node"]}' services/api-gateway/src/gateway/gateway-route-parity.self-test.ts
 ```
