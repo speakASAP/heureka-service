@@ -58,7 +58,7 @@ async function main() {
   assert.equal(dependencyHealth.dependencies.warehouse.status, 'ok');
   assert.equal(dependencyHealth.dependencies.orders.status, 'ok');
   assert.ok(requestedUrls.includes('http://catalog.test/health'));
-  assert.ok(requestedUrls.includes('http://warehouse.test/health'));
+  assert.ok(requestedUrls.includes('http://warehouse.test/api/health'));
   assert.ok(requestedUrls.includes('http://orders.test/health'));
   assert.ok(requestedUrls.includes('http://logging.test/health'));
 

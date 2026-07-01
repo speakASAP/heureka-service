@@ -37,6 +37,7 @@ export interface DependencyCheckConfig {
   name: string;
   envNames?: string[];
   defaultUrl?: string;
+  healthPath?: string;
   critical?: boolean;
   kind?: 'database' | 'http';
 }
@@ -96,7 +97,7 @@ export class HealthService {
       { name: 'database', kind: 'database', critical: true },
       { name: 'auth', envNames: ['AUTH_SERVICE_URL'], defaultUrl: 'http://auth-microservice:3370', critical: true },
       { name: 'catalog', envNames: ['CATALOG_SERVICE_URL'], defaultUrl: 'http://catalog-microservice:3200', critical: true },
-      { name: 'warehouse', envNames: ['WAREHOUSE_SERVICE_URL', 'WAREHOUSE_BASE_URL'], defaultUrl: 'http://warehouse-microservice:3201', critical: true },
+      { name: 'warehouse', envNames: ['WAREHOUSE_SERVICE_URL', 'WAREHOUSE_BASE_URL'], defaultUrl: 'http://warehouse-microservice:3201', healthPath: '/api/health', critical: true },
       { name: 'orders', envNames: ['ORDERS_SERVICE_URL', 'ORDERS_MICROSERVICE_URL', 'ORDER_SERVICE_URL'], defaultUrl: 'http://orders-microservice:3203', critical: true },
       { name: 'logging', envNames: ['LOGGING_SERVICE_URL'], defaultUrl: 'http://logging-microservice:3367' },
       { name: 'notification', envNames: ['NOTIFICATION_SERVICE_URL'], defaultUrl: 'http://notifications-microservice:3368' },
@@ -144,7 +145,7 @@ export class HealthService {
       };
     }
 
-    const healthUrl = this.toHealthUrl(baseUrl);
+    const healthUrl = this.toHealthUrl(baseUrl, config.healthPath);
     const timeoutMs = this.numberEnv('HEALTH_DEPENDENCY_TIMEOUT_MS', 2500, 500, 10000);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -185,13 +186,14 @@ export class HealthService {
     return fallback || '';
   }
 
-  private toHealthUrl(baseUrl: string) {
+  private toHealthUrl(baseUrl: string, healthPath = '/health') {
     const withoutTrailingSlash = String(baseUrl || '').replace(/\/+$/, '');
+    const normalizedHealthPath = `/${String(healthPath || '/health').replace(/^\/+/, '')}`;
     if (withoutTrailingSlash.endsWith('/api/logs')) {
       return `${withoutTrailingSlash.slice(0, -'/api/logs'.length)}/health`;
     }
     if (withoutTrailingSlash.endsWith('/health')) return withoutTrailingSlash;
-    return `${withoutTrailingSlash}/health`;
+    return `${withoutTrailingSlash}${normalizedHealthPath}`;
   }
 
   private redactUrl(value: string) {
