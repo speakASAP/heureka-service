@@ -419,6 +419,23 @@ export class PublicController {
           <button class="secondary-button light button-reset" id="operations-regenerate-feed" type="button">${this.icon('refresh')} Regenerate feed</button>
         </div>
         <div id="operations-metrics" class="dashboard-metrics"></div>
+        <div class="table-scroll readiness-lanes">
+          <table class="dashboard-table">
+            <thead>
+              <tr><th>Lane</th><th>Status</th><th>Owner</th><th>Products</th><th>Next action</th></tr>
+            </thead>
+            <tbody id="readiness-lanes-body"></tbody>
+          </table>
+        </div>
+        <div class="dashboard-notice" id="readiness-lanes-missing"></div>
+        <div class="table-scroll readiness-lanes">
+          <table class="dashboard-table">
+            <thead>
+              <tr><th>Product</th><th>SKU</th><th>Readiness</th><th>Blockers</th><th>Action</th></tr>
+            </thead>
+            <tbody id="readiness-blocked-products-body"></tbody>
+          </table>
+        </div>
         <div class="table-scroll">
           <table class="dashboard-table">
             <thead>
@@ -854,6 +871,38 @@ export class PublicController {
     }
   }
 
+  function renderReadinessLanes(data) {
+    var lanesBody = document.getElementById('readiness-lanes-body');
+    var missing = document.getElementById('readiness-lanes-missing');
+    var productsBody = document.getElementById('readiness-blocked-products-body');
+    var lanes = data.lanes || {};
+    var laneRows = [
+      ['Stock', lanes.stock],
+      ['Media', lanes.media],
+      ['Catalog content', lanes.catalogContent],
+      ['Feed settings', lanes.feedSettings]
+    ];
+    if (lanesBody) {
+      lanesBody.innerHTML = laneRows.map(function (row) {
+        var lane = row[1] || {};
+        return '<tr><td>' + escapeHtml(row[0]) + '</td><td>' + statusChip(lane.status || 'unknown') + '</td><td>' + escapeHtml(lane.ownerRole || '') + '</td><td>' + escapeHtml(formatNumber(lane.productCount || 0)) + '</td><td>' + escapeHtml(humanize(lane.nextAction || 'monitor')) + '</td></tr>';
+      }).join('');
+    }
+    if (missing) {
+      var blockers = laneRows.reduce(function (acc, row) {
+        var lane = row[1] || {};
+        return acc.concat(lane.blockers || []);
+      }, []);
+      var summary = data.readiness && data.readiness.summary ? data.readiness.summary : {};
+      missing.innerHTML = '<strong>Readiness lanes</strong><p>' + escapeHtml(formatNumber(summary.ready || 0)) + ' ready, ' + escapeHtml(formatNumber(summary.blocked || 0)) + ' blocked. ' + escapeHtml(blockers.join(', ') || 'No current blocker lanes') + '</p>';
+    }
+    if (productsBody) {
+      productsBody.innerHTML = (data.blockedProducts || []).slice(0, 25).map(function (product) {
+        return '<tr><td><strong>' + escapeHtml(product.name || product.productId || '') + '</strong><p class="table-subtext">' + escapeHtml(product.productId || '') + '</p></td><td>' + escapeHtml(product.sku || '') + '</td><td>' + statusChip(product.readiness || 'unknown') + '</td><td>' + escapeHtml((product.blockerCodes || []).join(', ')) + '</td><td>' + escapeHtml(humanize(product.nextAction || 'monitor')) + '</td></tr>';
+      }).join('') || '<tr><td colspan="5">No blocked products</td></tr>';
+    }
+  }
+
   function renderOperations(data) {
     var metrics = document.getElementById('operations-metrics');
     var body = document.getElementById('feed-history-body');
@@ -917,11 +966,13 @@ export class PublicController {
   function loadOperationsData() {
     return Promise.all([
       api('/heureka/dashboard/operations'),
-      api('/heureka/dashboard/operations/history')
+      api('/heureka/dashboard/operations/history'),
+      api('/heureka/dashboard/readiness/lanes')
     ]).then(function (results) {
       renderMetrics(results[0].data.summary || {});
       renderOperations(results[0].data);
       renderOperationEvents(results[1].data);
+      renderReadinessLanes(results[2].data);
     }).catch(showDashboardError);
   }
 
@@ -1573,7 +1624,7 @@ td b.danger { background: #ffe8ea; color: var(--red); }
 .check-row input { width: 22px; height: 22px; }
 .listing-gaps { display: flex; flex-wrap: wrap; gap: 8px; }
 .workflow-panel, .catalog-preview { border: 1px solid #d9e0e7; border-radius: 4px; padding: 12px; margin-bottom: 12px; background: #f8fafc; }
-.operations-timeline { margin-top: 16px; }
+.operations-timeline, .readiness-lanes { margin-top: 16px; }
 .workflow-panel strong, .catalog-preview strong { display: block; margin-bottom: 4px; }
 .workflow-panel p, .catalog-preview p { margin: 4px 0; color: #64748b; font-size: 12px; }
 .dashboard-notice { border: 1px solid #f59f00; background: #fffbeb; color: #92400e; border-radius: 8px; padding: 12px; }

@@ -462,6 +462,40 @@ export class DashboardService {
     };
   }
 
+  async getReadinessLanes(user: DashboardUser, feedType = 'heureka_cz') {
+    this.normalizeUser(user);
+    const catalog = await this.collectActiveCatalogProducts();
+    const productIds = catalog.items.map((product) => this.getCatalogProductId(product)).filter(Boolean);
+    const readinessResponses = await this.collectBulkReadiness(feedType, productIds);
+    const readinessItems = readinessResponses.flatMap((response) => Array.isArray(response?.items) ? response.items : []);
+    const blockerIndex = this.indexReadinessBlockers(readinessItems);
+    const lanes = this.buildReadinessLanes(blockerIndex.byCode);
+    const productsById = new Map(catalog.items.map((product) => [this.getCatalogProductId(product), product]));
+    const readinessById = new Map(readinessItems.map((item) => [String(item?.productId || ''), item]));
+    const blockedProductIds = Array.from(new Set(Object.values(blockerIndex.byCode).flat())).sort();
+
+    return {
+      contractVersion: 'heureka-dashboard-readiness-lanes.v1',
+      generatedAt: new Date().toISOString(),
+      readOnly: true,
+      mutations: [],
+      feedType,
+      inputs: {
+        activeCatalogProductsReturned: productIds.length,
+        activeCatalogProductsReportedTotal: catalog.total,
+        activeCatalogProductsTruncated: catalog.truncated,
+      },
+      readiness: {
+        contractVersions: Array.from(new Set(readinessResponses.map((response) => response?.contractVersion).filter(Boolean))),
+        summary: this.summarizeReadinessItems(readinessItems),
+        blockerCounts: blockerIndex.counts,
+      },
+      lanes,
+      blockedProducts: blockedProductIds.map((productId) => this.buildReadinessBlockedProduct(productId, productsById, readinessById)),
+      nextActions: this.buildReadinessLaneNextActions(lanes),
+    };
+  }
+
   async getSettings(user: DashboardUser, feedType = 'heureka_cz') {
     this.normalizeUser(user);
     const settings = await this.prisma.heurekaSettings.findUnique({ where: { feedType } }).catch(() => null);
@@ -694,6 +728,183 @@ export class DashboardService {
       feeds,
       latestFeed: latestFeed ? this.serializeFeed(latestFeed) : null,
     };
+  }
+
+  private async collectActiveCatalogProducts(maxProducts = 500) {
+    const limit = 100;
+    const items: any[] = [];
+    let total = 0;
+
+    for (let page = 1; items.length < maxProducts; page += 1) {
+      const catalog = await this.catalogClient.searchProducts({ isActive: true, page, limit });
+      const pageItems = Array.isArray(catalog.items) ? catalog.items : [];
+      items.push(...pageItems);
+      total = Number(catalog.total || total || items.length);
+      if (!pageItems.length || pageItems.length < limit || items.length >= total) break;
+    }
+
+    const byId = new Map<string, any>();
+    for (const item of items.slice(0, maxProducts)) {
+      const productId = this.getCatalogProductId(item);
+      if (productId && !byId.has(productId)) byId.set(productId, item);
+    }
+
+    return {
+      total: total || byId.size,
+      items: Array.from(byId.values()),
+      truncated: Boolean(total && byId.size < total),
+    };
+  }
+
+  private async collectBulkReadiness(feedType: string, productIds: string[]) {
+    const responses: any[] = [];
+    for (let index = 0; index < productIds.length; index += 100) {
+      const productIdChunk = productIds.slice(index, index + 100);
+      if (!productIdChunk.length) continue;
+      responses.push(await this.feedService.getBulkFeedReadiness(productIdChunk, feedType));
+    }
+    return responses;
+  }
+
+  private indexReadinessBlockers(readinessItems: any[]) {
+    const byCode: Record<string, string[]> = {};
+    for (const item of readinessItems || []) {
+      const productId = this.optionalString(item?.productId);
+      if (!productId) continue;
+      for (const blocker of item?.blockers || []) {
+        const code = this.optionalString(blocker?.code);
+        if (!code) continue;
+        if (!byCode[code]) byCode[code] = [];
+        byCode[code].push(productId);
+      }
+    }
+
+    for (const code of Object.keys(byCode)) {
+      byCode[code] = Array.from(new Set(byCode[code])).sort();
+    }
+
+    return {
+      byCode,
+      counts: Object.fromEntries(Object.entries(byCode).sort(([left], [right]) => left.localeCompare(right)).map(([code, ids]) => [code, ids.length])),
+    };
+  }
+
+  private summarizeReadinessItems(readinessItems: any[]) {
+    const summary = { total: 0, ready: 0, warning: 0, blocked: 0, unknown: 0 };
+    for (const item of readinessItems || []) {
+      const state = this.optionalString(item?.readiness) || 'unknown';
+      summary.total += 1;
+      if (state === 'ready' || state === 'warning' || state === 'blocked' || state === 'unknown') {
+        summary[state] += 1;
+      } else {
+        summary.unknown += 1;
+      }
+    }
+    return summary;
+  }
+
+  private buildReadinessLanes(byCode: Record<string, string[]>) {
+    const stockProductIds = Array.from(new Set([...(byCode.ZERO_STOCK || []), ...(byCode.STOCK_UNKNOWN || [])])).sort();
+    const mediaProductIds = Array.from(new Set([...(byCode.MISSING_PRIMARY_IMAGE || []), ...(byCode.INVALID_IMAGE_URL || [])])).sort();
+    const catalogProductIds = Array.from(new Set([
+      ...(byCode.PRODUCT_NOT_FOUND || []),
+      ...(byCode.PRODUCT_INACTIVE || []),
+      ...(byCode.MISSING_PRODUCT_NAME || []),
+      ...(byCode.MISSING_DESCRIPTION || []),
+      ...(byCode.MISSING_CATEGORY || []),
+      ...(byCode.PRICE_MISSING || []),
+      ...(byCode.PRICE_NOT_POSITIVE || []),
+    ])).sort();
+    const settingsProductIds = Array.from(new Set([...(byCode.SETTINGS_INACTIVE || [])])).sort();
+
+    return {
+      stock: {
+        status: stockProductIds.length ? 'blocked' : 'ready',
+        ownerRole: 'Warehouse/data owner',
+        productCount: stockProductIds.length,
+        productIds: stockProductIds,
+        blockerCodes: ['ZERO_STOCK', 'STOCK_UNKNOWN'].filter((code) => byCode[code]?.length),
+        blockers: [
+          ...(byCode.ZERO_STOCK?.length ? [`[MISSING: stock for ${byCode.ZERO_STOCK.length} current active products]`] : []),
+          ...(byCode.STOCK_UNKNOWN?.length ? [`[MISSING: authoritative Warehouse availability for ${byCode.STOCK_UNKNOWN.length} current active products]`] : []),
+          ...(stockProductIds.length ? ['[UNKNOWN: which zero-stock products should be listed on Heureka now]'] : []),
+        ],
+        nextAction: stockProductIds.length ? 'provide_authoritative_stock_or_exclusion_decision' : 'monitor',
+      },
+      media: {
+        status: mediaProductIds.length ? 'blocked' : 'ready',
+        ownerRole: 'Catalog media owner',
+        productCount: mediaProductIds.length,
+        productIds: mediaProductIds,
+        blockerCodes: ['MISSING_PRIMARY_IMAGE', 'INVALID_IMAGE_URL'].filter((code) => byCode[code]?.length),
+        blockers: [
+          ...(byCode.MISSING_PRIMARY_IMAGE?.length ? [`[MISSING: primary image for ${byCode.MISSING_PRIMARY_IMAGE.length} current active products]`] : []),
+          ...(mediaProductIds.length ? ['[MISSING: approved public image URLs or image files for affected products]'] : []),
+          ...(byCode.INVALID_IMAGE_URL?.length ? [`[MISSING: public HTTPS image URL replacement for ${byCode.INVALID_IMAGE_URL.length} products]`] : []),
+        ],
+        nextAction: mediaProductIds.length ? 'attach_approved_public_primary_images' : 'monitor',
+      },
+      catalogContent: {
+        status: catalogProductIds.length ? 'blocked' : 'ready',
+        ownerRole: 'Catalog/pricing owner',
+        productCount: catalogProductIds.length,
+        productIds: catalogProductIds,
+        blockerCodes: ['PRODUCT_NOT_FOUND', 'PRODUCT_INACTIVE', 'MISSING_PRODUCT_NAME', 'MISSING_DESCRIPTION', 'MISSING_CATEGORY', 'PRICE_MISSING', 'PRICE_NOT_POSITIVE'].filter((code) => byCode[code]?.length),
+        blockers: [
+          ...(byCode.PRODUCT_NOT_FOUND?.length ? [`[MISSING: Catalog rows for ${byCode.PRODUCT_NOT_FOUND.length} active products]`] : []),
+          ...(byCode.PRODUCT_INACTIVE?.length ? [`[MISSING: active Catalog approval for ${byCode.PRODUCT_INACTIVE.length} products]`] : []),
+          ...(byCode.MISSING_PRODUCT_NAME?.length ? [`[MISSING: public product name for ${byCode.MISSING_PRODUCT_NAME.length} products]`] : []),
+          ...(byCode.MISSING_DESCRIPTION?.length ? [`[MISSING: public Heureka description for ${byCode.MISSING_DESCRIPTION.length} products]`] : []),
+          ...(byCode.MISSING_CATEGORY?.length ? [`[MISSING: public Heureka category text for ${byCode.MISSING_CATEGORY.length} products]`] : []),
+          ...((byCode.PRICE_MISSING?.length || byCode.PRICE_NOT_POSITIVE?.length) ? ['[MISSING: public VAT-inclusive price for affected products]'] : []),
+        ],
+        nextAction: catalogProductIds.length ? 'repair_catalog_marketplace_fields_or_pricing' : 'monitor',
+      },
+      feedSettings: {
+        status: settingsProductIds.length ? 'blocked' : 'ready',
+        ownerRole: 'Heureka channel owner',
+        productCount: settingsProductIds.length,
+        productIds: settingsProductIds,
+        blockerCodes: ['SETTINGS_INACTIVE'].filter((code) => byCode[code]?.length),
+        blockers: [
+          ...(settingsProductIds.length ? ['[MISSING: active Heureka feed settings]'] : []),
+        ],
+        nextAction: settingsProductIds.length ? 'activate_feed_settings' : 'monitor',
+      },
+    };
+  }
+
+  private buildReadinessBlockedProduct(productId: string, productsById: Map<string, any>, readinessById: Map<string, any>) {
+    const product = productsById.get(productId) || {};
+    const readiness = readinessById.get(productId) || {};
+    const blockerCodes = (readiness.blockers || []).map((blocker: any) => blocker?.code).filter(Boolean);
+    return {
+      productId,
+      sku: product.sku || product.code || null,
+      name: product.title || product.name || product.productName || null,
+      readiness: readiness.readiness || 'unknown',
+      availableStock: readiness.availableStock === undefined ? null : readiness.availableStock,
+      settingsActive: readiness.settingsActive === undefined ? null : readiness.settingsActive,
+      blockerCodes,
+      ownerServices: Array.from(new Set((readiness.blockers || []).map((blocker: any) => blocker?.ownerService).filter(Boolean))),
+      nextAction: this.nextActionForReadinessBlockers(blockerCodes),
+    };
+  }
+
+  private nextActionForReadinessBlockers(blockerCodes: string[]) {
+    if (blockerCodes.includes('ZERO_STOCK') || blockerCodes.includes('STOCK_UNKNOWN')) return 'stock_owner_decision';
+    if (blockerCodes.includes('MISSING_PRIMARY_IMAGE') || blockerCodes.includes('INVALID_IMAGE_URL')) return 'media_backfill';
+    if (blockerCodes.includes('SETTINGS_INACTIVE')) return 'activate_feed_settings';
+    return blockerCodes.length ? 'repair_catalog_content' : 'monitor';
+  }
+
+  private buildReadinessLaneNextActions(lanes: Record<string, any>) {
+    const actions = [];
+    if (lanes.stock?.status === 'blocked') actions.push('Stock owner: provide authoritative current stock or exclusion decisions for zero-stock products.');
+    if (lanes.media?.status === 'blocked') actions.push('Catalog media owner: attach approved public HTTPS primary images for affected products.');
+    if (lanes.catalogContent?.status === 'blocked') actions.push('Catalog/pricing owner: repair missing public marketplace fields and pricing at the Catalog source.');
+    if (lanes.feedSettings?.status === 'blocked') actions.push('Heureka channel owner: activate feed settings before publication.');
+    return actions;
   }
 
   private filterDashboardProducts(products: any[], filters: { feedStatus?: string | null; workflowStatus?: string | null; gap?: string | null }) {

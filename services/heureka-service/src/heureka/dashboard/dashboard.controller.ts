@@ -100,6 +100,11 @@ export class DashboardController {
     return { success: true, data: await this.dashboardService.getOperationsHistory(req.user, feedType) };
   }
 
+  @Get('readiness/lanes')
+  async readinessLanes(@Req() req: any, @Query('feedType') feedType = 'heureka_cz') {
+    return { success: true, data: await this.dashboardService.getReadinessLanes(req.user, feedType) };
+  }
+
   @Get('settings')
   async settings(@Req() req: any, @Query('feedType') feedType = 'heureka_cz') {
     return { success: true, data: await this.dashboardService.getSettings(req.user, feedType) };

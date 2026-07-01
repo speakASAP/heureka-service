@@ -16,6 +16,8 @@ function assertIncludes(values: readonly string[], expected: string): void {
 async function main(): Promise<void> {
   let stockBatchCalls = 0;
   let lastStockBatchIds: string[] = [];
+  let readinessBatchCalls = 0;
+  let lastReadinessBatchIds: string[] = [];
   const pricingCalls: string[] = [];
   const mediaCalls: string[] = [];
   const marketplaceCalls: string[] = [];
@@ -93,11 +95,36 @@ async function main(): Promise<void> {
     error: () => undefined,
   };
 
+  const feedService = {
+    getBulkFeedReadiness: async (productIds: string[], feedType: string) => {
+      readinessBatchCalls += 1;
+      lastReadinessBatchIds = productIds;
+      return {
+        contractVersion: 'catalog-feed-readiness.v1',
+        feedType,
+        summary: { total: 2, ready: 1, warning: 0, blocked: 1, unknown: 0 },
+        items: [
+          { productId: 'catalog-product-1', readiness: 'ready', availableStock: 7, settingsActive: true, blockers: [] },
+          {
+            productId: 'catalog-product-2',
+            readiness: 'blocked',
+            availableStock: 0,
+            settingsActive: true,
+            blockers: [
+              { code: 'ZERO_STOCK', ownerService: 'warehouse-service', severity: 'blocker' },
+              { code: 'MISSING_PRIMARY_IMAGE', ownerService: 'catalog-media-service', severity: 'blocker' },
+            ],
+          },
+        ],
+      };
+    },
+  };
+
   const service = new DashboardService(
     prisma as any,
     catalogClient as any,
     warehouseClient as any,
-    {} as any,
+    feedService as any,
     {} as any,
     logger as any,
   );
@@ -136,11 +163,35 @@ async function main(): Promise<void> {
   assertEqual(blockedResponse.products[0].id, 'catalog-product-2');
   assertEqual(blockedResponse.filters.returned, 1);
 
+  const lanes = await service.getReadinessLanes(
+    { id: 'user-1', email: 'user@example.test', roles: [] },
+    'heureka_cz',
+  );
+  assertEqual(readinessBatchCalls, 1);
+  assertEqual(lastReadinessBatchIds.join(','), 'catalog-product-1,catalog-product-2');
+  assertEqual(lanes.readiness.summary.ready, 1);
+  assertEqual(lanes.readiness.summary.blocked, 1);
+  assertEqual(lanes.lanes.stock.status, 'blocked');
+  assertEqual(lanes.lanes.stock.productCount, 1);
+  assertEqual(lanes.lanes.media.status, 'blocked');
+  assertEqual(lanes.lanes.media.productCount, 1);
+  assertEqual(lanes.lanes.catalogContent.status, 'ready');
+  assertEqual(lanes.blockedProducts.length, 1);
+  assertEqual(lanes.blockedProducts[0].nextAction, 'stock_owner_decision');
+  assertEqual(lanes.readOnly, true);
+  assertEqual(Array.isArray(lanes.mutations), true);
+  assertEqual(lanes.mutations.length, 0);
+
   let controllerQuery: any = null;
+  let controllerReadinessFeedType: string | null = null;
   const controller = new DashboardController({
     listProducts: async (_user: any, query: any) => {
       controllerQuery = query;
       return { products: [], total: 0, filters: query };
+    },
+    getReadinessLanes: async (_user: any, feedType: string) => {
+      controllerReadinessFeedType = feedType;
+      return { feedType, lanes: {} };
     },
   } as any);
   await controller.products(
@@ -156,6 +207,11 @@ async function main(): Promise<void> {
   assertEqual(controllerQuery.feedStatus, 'excluded');
   assertEqual(controllerQuery.workflowStatus, 'blocked');
   assertEqual(controllerQuery.gap, 'stock');
+  await controller.readinessLanes(
+    { user: { id: 'user-1', email: 'user@example.test', roles: [] } } as any,
+    'heureka_sk',
+  );
+  assertEqual(controllerReadinessFeedType, 'heureka_sk');
 
   console.log('PASS dashboard-list-products self-test');
 }
