@@ -1,6 +1,7 @@
 # TASK-010 Data Owner Handoff
 
 Date: 2026-07-01
+Last updated: 2026-07-02
 Repository: `/home/ssf/Documents/Github/heureka-service`
 Status: active owner/data handoff for remaining Heureka feed blockers
 
@@ -41,7 +42,8 @@ Read-only evidence:
 - Warehouse batch rows for the 25 zero-stock products are `25/25`, all `totalQuantity=0`, `totalReserved=0`, `totalAvailable=0`.
 - Allegro local offers matched `23/25` products, but all matched rows are non-authoritative order-history data: `ORDER_HISTORY_ONLY`, `syncSource=ORDER_HISTORY`, `syncStatus=PARTIAL`, `stockQuantity=0`, `quantity=0`, `rawStockAvailable=null`.
 - Allegro stock snapshot rows for these products/offers: `0`.
-- Live Allegro current-stock API rows: `0` in the read-only audit because all configured OAuth tokens reported `expired_not_refreshed`; no token refresh was performed.
+- Earlier Heureka-specific Allegro current-stock probing returned `0` current rows because configured OAuth tokens reported `expired_not_refreshed`; no token refresh was performed in that read-only pass.
+- Superseding Allegro service evidence from the owner-approved 2026-06-29 complete physical stock recheck found only `9` unique current-stock-authoritative offers in the configured seller surface, with `496` total available units, and Warehouse already matched all `9`. That recheck found no hidden ~500-offer source and does not provide stock authority for the `25` Heureka zero-stock products.
 - Order history is not current stock authority.
 - Catalog marketplace profile reads for the original affected products returned no stock-like values.
 - `PROD9998` / `a2e15cc0-1a94-4faf-a82f-64afea9e9817` has `[MISSING: Allegro offer id/source]`.
@@ -50,7 +52,7 @@ Read-only evidence:
 Allowed systems:
 
 - Warehouse read reports.
-- Allegro current-stock read APIs.
+- Allegro current-stock read APIs only when owner-approved and paired with seller identity/readback evidence; the latest approved Allegro recheck found no additional source for these Heureka blockers.
 - Catalog marketplace profile reads.
 - Owner-approved stock sheet/source.
 - Post-approval Warehouse stock mutation only with product ID, warehouse ID, quantity, actor, reason code, and source reference.
@@ -58,6 +60,7 @@ Allowed systems:
 Forbidden actions:
 
 - Do not infer stock from Allegro order-history rows.
+- Do not treat Allegro token refresh, by itself, as stock authority; seller identity and Warehouse/product readback must be proven before any data change.
 - Do not write Warehouse without owner-approved quantities and source reference.
 - Do not include zero-stock products in Heureka feed unless owner explicitly approves an exclusion/stock policy.
 
