@@ -1,5 +1,5 @@
 {
-  "created_at": "2026-07-01T19:50:56Z",
+  "created_at": "2026-07-01T20:17:58Z",
   "gate": "deployment_readiness",
   "next_step": "ready_for_deployment_review",
   "pre_coding_gate": {
@@ -262,67 +262,67 @@
       "path": "docs/orchestrator/TASK-010-channel-parity-checklist.md"
     },
     {
-      "line": 156,
+      "line": 157,
       "marker": "[UNKNOWN: owner of k8s/external-secret.yaml runtime change]",
       "path": "docs/orchestrator/TASK-010-channel-parity-checklist.md"
     },
     {
-      "line": 230,
+      "line": 231,
       "marker": "[MISSING: ...]",
       "path": "docs/orchestrator/TASK-010-channel-parity-checklist.md"
     },
     {
-      "line": 242,
+      "line": 243,
       "marker": "[MISSING: ecosystem-wide shared operation/audit schema package]",
       "path": "docs/orchestrator/TASK-010-channel-parity-checklist.md"
     },
     {
-      "line": 247,
+      "line": 248,
       "marker": "[MISSING: ...]",
       "path": "docs/orchestrator/TASK-010-channel-parity-checklist.md"
     },
     {
-      "line": 250,
+      "line": 251,
       "marker": "[MISSING: ecosystem-wide shared operation/audit schema package]",
       "path": "docs/orchestrator/TASK-010-channel-parity-checklist.md"
     },
     {
-      "line": 278,
+      "line": 279,
       "marker": "[UNKNOWN: shop approval]",
       "path": "docs/orchestrator/TASK-010-channel-parity-checklist.md"
     },
     {
-      "line": 278,
+      "line": 279,
       "marker": "[MISSING: owner-supplied e-shop registration legal/company fields]",
       "path": "docs/orchestrator/TASK-010-channel-parity-checklist.md"
     },
     {
-      "line": 279,
+      "line": 280,
       "marker": "[MISSING: authoritative stock source]",
       "path": "docs/orchestrator/TASK-010-channel-parity-checklist.md"
     },
     {
-      "line": 279,
+      "line": 280,
       "marker": "[MISSING: approved image URLs/files]",
       "path": "docs/orchestrator/TASK-010-channel-parity-checklist.md"
     },
     {
-      "line": 279,
+      "line": 280,
       "marker": "[UNKNOWN: which zero-stock products should be listed]",
       "path": "docs/orchestrator/TASK-010-channel-parity-checklist.md"
     },
     {
-      "line": 297,
+      "line": 308,
       "marker": "[MISSING: authoritative current stock source]",
       "path": "docs/orchestrator/TASK-010-channel-parity-checklist.md"
     },
     {
-      "line": 297,
+      "line": 308,
       "marker": "[MISSING: owner approval for Warehouse mutation]",
       "path": "docs/orchestrator/TASK-010-channel-parity-checklist.md"
     },
     {
-      "line": 298,
+      "line": 309,
       "marker": "[MISSING: approved image URLs/files]",
       "path": "docs/orchestrator/TASK-010-channel-parity-checklist.md"
     },
